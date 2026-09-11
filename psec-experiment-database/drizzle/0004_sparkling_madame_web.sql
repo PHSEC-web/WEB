@@ -1,0 +1,2 @@
+ALTER TABLE `records` DROP INDEX `records_discipline_category_status_idx`;--> statement-breakpoint
+CREATE INDEX `records_discipline_category_status_idx` ON `records` (`discipline`,`category`,`status`);

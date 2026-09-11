@@ -1,0 +1,9 @@
+# Local deployment configuration — create a private environment configuration file manually from these values.
+DATABASE_URL=mysql://USERNAME:PASSWORD@HOST:3306/psec_database
+JWT_SECRET=replace-with-a-long-random-secret
+# Configure a local OAuth application or replace the authentication provider before public deployment.
+VITE_APP_ID=your-local-oauth-app-id
+OAUTH_SERVER_URL=https://api.manus.im
+VITE_OAUTH_PORTAL_URL=https://manus.im
+# Set this to a comma-separated list of administrator passwords you manage.
+PSEC_ADMIN_PASSWORDS=replace-with-your-admin-passwords

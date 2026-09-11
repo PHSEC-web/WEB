@@ -1,0 +1,104 @@
+# ============================================================
+# PSEC-Local-Migration — repository root ignore rules
+#
+# The application-level rules live in
+# psec-experiment-database/.gitignore (they only apply to that
+# subtree). This file covers everything at or above it, most
+# importantly database-backup/ and the root README.
+# ============================================================
+
+# ------------------------------------------------------------
+# Database export — MUST NOT be committed
+# ------------------------------------------------------------
+# Contains a real account row (openId + email address). The table
+# definitions in psec-database-schema.sql are safe to publish; the
+# row data is not.
+database-backup/psec-database-data.json
+
+# ------------------------------------------------------------
+# Environment files
+# ------------------------------------------------------------
+.env
+.env.*
+!.env.example
+LOCAL_ENVIRONMENT.txt
+
+# ------------------------------------------------------------
+# Dependencies
+# ------------------------------------------------------------
+node_modules/
+.pnpm-store/
+jspm_packages/
+.yarn-integrity
+
+# ------------------------------------------------------------
+# Build output
+# ------------------------------------------------------------
+dist/
+build/
+out/
+.next/
+.nuxt/
+.cache/
+.parcel-cache/
+*.tsbuildinfo
+
+# ------------------------------------------------------------
+# Coverage / test artifacts
+# ------------------------------------------------------------
+coverage/
+*.lcov
+.nyc_output
+
+# ------------------------------------------------------------
+# Logs and runtime data
+# ------------------------------------------------------------
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# ------------------------------------------------------------
+# Local databases
+# ------------------------------------------------------------
+*.db
+*.sqlite
+*.sqlite3
+
+# ------------------------------------------------------------
+# Editor and OS files
+# ------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ------------------------------------------------------------
+# Backups and scratch files
+# ------------------------------------------------------------
+*.bak
+*.orig
+*.rej
+tmp/
+temp/
+
+# ------------------------------------------------------------
+# Platform tooling artifacts
+# ------------------------------------------------------------
+.webdev/
+.project-config.json
+client/public/__manus__/version.json
