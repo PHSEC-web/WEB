@@ -1,10 +1,10 @@
 import type { Express, Request } from "express";
 import { and, eq, isNull } from "drizzle-orm";
 import { attachments, records } from "../../drizzle/schema";
-import { ENV } from "./env";
 import { sdk } from "./sdk";
 import { isAdminSession } from "../admin";
 import { getDb } from "../db";
+import { storageGetSignedUrl } from "../storage";
 
 async function canReadRecordAttachment(key: string, req: Request) {
   const db = await getDb();
@@ -94,33 +94,8 @@ export function registerStorageProxy(app: Express) {
       }
     }
 
-    if (!ENV.legacyStorageApiUrl || !ENV.legacyStorageApiKey) {
-      res.status(500).send("Storage proxy not configured");
-      return;
-    }
-
     try {
-      const forgeUrl = new URL(
-        "v1/storage/presign/get",
-        ENV.legacyStorageApiUrl.replace(/\/+$/, "") + "/"
-      );
-      forgeUrl.searchParams.set("path", key);
-      const forgeResp = await fetch(forgeUrl, {
-        headers: { Authorization: `Bearer ${ENV.legacyStorageApiKey}` },
-      });
-      if (!forgeResp.ok) {
-        const body = await forgeResp.text().catch(() => "");
-        console.error(
-          `[StorageProxy] forge error: ${forgeResp.status} ${body}`
-        );
-        res.status(502).send("Storage backend error");
-        return;
-      }
-      const { url } = (await forgeResp.json()) as { url: string };
-      if (!url) {
-        res.status(502).send("Empty signed URL from backend");
-        return;
-      }
+      const url = await storageGetSignedUrl(key);
       res.set("Cache-Control", "private, no-store");
       res.redirect(307, url);
     } catch (err) {

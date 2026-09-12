@@ -35,16 +35,16 @@ mysql -u root -p your_db < psec-experiment-database/drizzle/seed.sql
 `drizzle/seed.sql` and `shared/classicExperiments.ts` carry the experiment catalogue, so a clone plus
 the seed files is enough to run the application.
 
-Managed attachment objects stored by the current cloud runtime are represented by their database metadata only. To retain their original binary files after moving away from the managed runtime, download those files through the administrator interface before changing hosting, then upload them to the replacement object-storage service.
+Managed attachment objects stored by the previous cloud runtime are represented by their database metadata only. To retain their original binary files, retrieve them before changing storage and upload them to the private OSS bucket using their original `storageKey`. See `psec-experiment-database/OSS_DEPLOYMENT.md`.
 
 ## Local setup
 
 1. Install Node.js 22+ and pnpm 10+ on the target computer.
 2. Install MySQL 8+ or a compatible TiDB instance.
 3. Create a new empty database and run `database-backup/psec-database-schema.sql`. If you hold a local copy of `psec-database-data.json`, import its rows using a controlled import script or your database tool; otherwise load `psec-experiment-database/drizzle/seed.sql` for the experiment catalogue.
-4. Create a private environment configuration file from `LOCAL_ENVIRONMENT_TEMPLATE.txt` and fill in the local database URL, JWT secret, OAuth configuration, and admin password list. Do **not** commit the populated file.
+4. Create a private environment configuration file from `LOCAL_ENVIRONMENT_TEMPLATE.txt` and fill in the local database URL, JWT secret, SMTP settings, private OSS configuration, and admin password list. Do **not** commit the populated file.
 5. In `psec-experiment-database/`, run `pnpm install`, then `pnpm check` and `pnpm build`. Start development with `pnpm dev`.
 
 ## Important hosting note
 
-The existing project relies on Manus OAuth and managed attachment storage. For a fully independent public deployment, configure an OAuth provider and S3-compatible object storage, then update the respective integration layers. The application source, schema, migration history, records, revisions, and database content are included in this package.
+The current application uses school-email login and DirectMail SMTP, with private Alibaba Cloud OSS for attachments. Configure the OSS bucket and migrate any pre-existing attachment objects before deploying this storage change. See `psec-experiment-database/OSS_DEPLOYMENT.md` for the checklist.

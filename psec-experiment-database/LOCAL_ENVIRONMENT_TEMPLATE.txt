@@ -8,8 +8,10 @@ SMTP_PORT=587
 SMTP_USER=noreply@example.com
 SMTP_PASSWORD=replace-with-smtp-password
 SMTP_FROM=PSEC Archive <noreply@example.com>
-# Temporary attachment compatibility while object storage is migrated.
-BUILT_IN_FORGE_API_URL=
-BUILT_IN_FORGE_API_KEY=
+# Private Alibaba Cloud OSS bucket (same region as the server when possible).
+OSS_REGION=oss-ap-southeast-5
+OSS_BUCKET=replace-with-your-private-bucket-name
+OSS_ACCESS_KEY_ID=replace-with-ram-access-key-id
+OSS_ACCESS_KEY_SECRET=replace-with-ram-access-key-secret
 # Set this to a comma-separated list of administrator passwords you manage.
 PSEC_ADMIN_PASSWORDS=replace-with-your-admin-passwords

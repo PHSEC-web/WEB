@@ -9,8 +9,10 @@ export const ENV = {
   smtpUser: process.env.SMTP_USER ?? "",
   smtpPassword: process.env.SMTP_PASSWORD ?? "",
   smtpFrom: process.env.SMTP_FROM ?? "",
-  legacyStorageApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
-  legacyStorageApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  ossRegion: (process.env.OSS_REGION ?? "").trim(),
+  ossBucket: (process.env.OSS_BUCKET ?? "").trim(),
+  ossAccessKeyId: (process.env.OSS_ACCESS_KEY_ID ?? "").trim(),
+  ossAccessKeySecret: (process.env.OSS_ACCESS_KEY_SECRET ?? "").trim(),
 };
 
 export function validateProductionEnv() {
@@ -25,6 +27,10 @@ export function validateProductionEnv() {
     ["SMTP_USER", ENV.smtpUser],
     ["SMTP_PASSWORD", ENV.smtpPassword],
     ["SMTP_FROM", ENV.smtpFrom],
+    ["OSS_REGION", ENV.ossRegion],
+    ["OSS_BUCKET", ENV.ossBucket],
+    ["OSS_ACCESS_KEY_ID", ENV.ossAccessKeyId],
+    ["OSS_ACCESS_KEY_SECRET", ENV.ossAccessKeySecret],
   ] as const;
 
   const missing = required
