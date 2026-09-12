@@ -1,6 +1,6 @@
 import type { Express, Request } from "express";
 import { and, eq, isNull } from "drizzle-orm";
-import { attachments, records } from "../../drizzle/schema";
+import { attachments, records, submissions } from "../../drizzle/schema";
 import { sdk } from "./sdk";
 import { isAdminSession } from "../admin";
 import { getDb } from "../db";
@@ -40,6 +40,28 @@ async function canReadRecordAttachment(key: string, req: Request) {
   );
 }
 
+async function getStorageMetadata(key: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const attachment = (
+    await db
+      .select({ fileName: attachments.fileName })
+      .from(attachments)
+      .where(and(eq(attachments.storageKey, key), isNull(attachments.deletedAt)))
+      .limit(1)
+  )[0];
+  if (attachment) return attachment;
+
+  const submission = (
+    await db
+      .select({ fileName: submissions.attachmentName })
+      .from(submissions)
+      .where(eq(submissions.attachmentKey, key))
+      .limit(1)
+  )[0];
+  return submission?.fileName ? submission : null;
+}
+
 export function registerStorageProxy(app: Express) {
   app.get("/storage/*", async (req, res) => {
     const key = (req.params as Record<string, string>)[0];
@@ -47,6 +69,8 @@ export function registerStorageProxy(app: Express) {
       res.status(400).send("Missing storage key");
       return;
     }
+
+    const metadata = await getStorageMetadata(key);
 
     if (key.startsWith("psec-records/")) {
       if (!(await canReadRecordAttachment(key, req))) {
@@ -95,7 +119,10 @@ export function registerStorageProxy(app: Express) {
     }
 
     try {
-      const url = await storageGetSignedUrl(key);
+      const url = await storageGetSignedUrl(
+        key,
+        metadata?.fileName ? { downloadName: metadata.fileName } : undefined,
+      );
       res.set("Cache-Control", "private, no-store");
       res.redirect(307, url);
     } catch (err) {

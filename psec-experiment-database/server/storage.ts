@@ -3,6 +3,19 @@ import { ENV } from "./_core/env";
 
 const SIGNED_URL_LIFETIME_SECONDS = 60;
 
+function contentDisposition(fileName: string): string {
+  const cleanName = fileName
+    .replace(/[\r\n]/g, "")
+    .replace(/[\\/]/g, "-")
+    .trim()
+    .slice(0, 240) || "download";
+  const fallback = cleanName
+    .replace(/[^\x20-\x7e]/g, "_")
+    .replace(/[";]/g, "_") || "download";
+  const encoded = encodeURIComponent(cleanName).replace(/'/g, "%27");
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+}
+
 function getClient() {
   const { ossRegion, ossBucket, ossAccessKeyId, ossAccessKeySecret } = ENV;
   if (!ossRegion || !ossBucket || !ossAccessKeyId || !ossAccessKeySecret) {
@@ -48,11 +61,21 @@ export async function storageGet(relKey: string): Promise<{ key: string; url: st
   return { key, url: `/storage/${key}` };
 }
 
-export async function storageGetSignedUrl(relKey: string): Promise<string> {
+export async function storageGetSignedUrl(
+  relKey: string,
+  options: { downloadName?: string } = {},
+): Promise<string> {
+  const request = options.downloadName
+    ? {
+        queries: {
+          "response-content-disposition": contentDisposition(options.downloadName),
+        },
+      }
+    : undefined;
   return getClient().signatureUrlV4(
     "GET",
     SIGNED_URL_LIFETIME_SECONDS,
-    undefined,
+    request,
     normalizeKey(relKey),
   );
 }

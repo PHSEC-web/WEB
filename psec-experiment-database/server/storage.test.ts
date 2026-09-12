@@ -49,4 +49,20 @@ describe("OSS storage", () => {
     await expect(storageGetSignedUrl("/psec-records/7/old.pdf")).resolves.toContain("https://");
     expect(signatureUrlV4).toHaveBeenCalledWith("GET", 60, undefined, "psec-records/7/old.pdf");
   });
+
+  it("sets the original filename on the signed download response", async () => {
+    await storageGetSignedUrl("psec-records/7/report.pdf", { downloadName: "研究报告.pdf" });
+    expect(signatureUrlV4).toHaveBeenCalledWith(
+      "GET",
+      60,
+      {
+        queries: {
+          "response-content-disposition": expect.stringContaining(
+            "filename*=UTF-8''%E7%A0%94%E7%A9%B6%E6%8A%A5%E5%91%8A.pdf",
+          ),
+        },
+      },
+      "psec-records/7/report.pdf",
+    );
+  });
 });

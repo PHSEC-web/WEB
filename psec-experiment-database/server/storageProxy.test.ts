@@ -37,7 +37,7 @@ describe("private storage redirect", () => {
     vi.mocked(isAdminSession).mockReturnValue(true);
     vi.mocked(storageGetSignedUrl).mockResolvedValue("https://example.oss-ap-southeast-5.aliyuncs.com/file?signature=short");
     const response = await requestStorage("psec-submissions/private.pdf");
-    expect(storageGetSignedUrl).toHaveBeenCalledWith("psec-submissions/private.pdf");
+    expect(storageGetSignedUrl).toHaveBeenCalledWith("psec-submissions/private.pdf", undefined);
     expect(response.set).toHaveBeenCalledWith("Cache-Control", "private, no-store");
     expect(response.redirect).toHaveBeenCalledWith(307, expect.stringContaining("signature=short"));
   });
