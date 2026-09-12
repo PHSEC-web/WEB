@@ -1,11 +1,21 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { attachments, recordRevisions, records } from "../drizzle/schema";
+import {
+  lifecycleForProjectCategory,
+  projectCategoryForLifecycle,
+  type ProjectCategory,
+} from "../shared/recordCategories";
 import { getDb } from "./db";
 import { storagePut } from "./storage";
 
 export type RecordLifecycle = "idea" | "design" | "in_progress" | "completed";
-export type RecordStatus = "pending" | "needs_revision" | "published" | "rejected" | "hidden";
+export type RecordStatus =
+  | "pending"
+  | "needs_revision"
+  | "published"
+  | "rejected"
+  | "hidden";
 export type RecordActor = {
   name: string;
   role: "member" | "admin" | "system";
@@ -73,7 +83,12 @@ const transitions: Record<RecordStatus, RecordStatus[]> = {
   rejected: [],
 };
 
-const lifecycleValues = new Set<RecordLifecycle>(["idea", "design", "in_progress", "completed"]);
+const lifecycleValues = new Set<RecordLifecycle>([
+  "idea",
+  "design",
+  "in_progress",
+  "completed",
+]);
 
 function clean(value?: string | null) {
   const result = value?.trim();
@@ -113,36 +128,74 @@ function recordSnapshot(row: typeof records.$inferSelect) {
     revisionCount: row.revisionCount,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    deletedAt: row.deletedAt,
   };
 }
 
 function normalizedPatch(patch: RecordPatch): RecordPatch {
   const next: RecordPatch = { ...patch };
-  if (next.discipline !== undefined) next.discipline = clean(next.discipline) || "Social Psychology";
-  if (next.category !== undefined) next.category = clean(next.category) || "Club Projects";
-  if (next.title !== undefined) next.title = clean(next.title) || "Untitled record";
-  const nullableTextFields = ["abstract", "theoreticalBasis", "historicalBackground", "hypothesis", "procedure", "materials", "expectedOutput", "results", "limitations", "nextQuestion", "ethicsNotes", "authorName", "authorMemberId", "ownerOpenId", "reviewComment", "reviewedBy"] as const;
-  for (const key of nullableTextFields) if (key in next) next[key] = clean(next[key]);
-  if (next.lifecycle && !lifecycleValues.has(next.lifecycle)) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid research lifecycle" });
+  if (next.discipline !== undefined)
+    next.discipline = clean(next.discipline) || "Social Psychology";
+  if (next.category !== undefined)
+    next.category = clean(next.category) || "Club Projects";
+  if (next.title !== undefined)
+    next.title = clean(next.title) || "Untitled record";
+  const nullableTextFields = [
+    "abstract",
+    "theoreticalBasis",
+    "historicalBackground",
+    "hypothesis",
+    "procedure",
+    "materials",
+    "expectedOutput",
+    "results",
+    "limitations",
+    "nextQuestion",
+    "ethicsNotes",
+    "authorName",
+    "authorMemberId",
+    "ownerOpenId",
+    "reviewComment",
+    "reviewedBy",
+  ] as const;
+  for (const key of nullableTextFields)
+    if (key in next) next[key] = clean(next[key]);
+  if (next.lifecycle && !lifecycleValues.has(next.lifecycle))
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Invalid research lifecycle",
+    });
   if (next.results?.trim() && !next.lifecycle) next.lifecycle = "completed";
   return next;
 }
 
 function changedFields(current: Record<string, unknown>, patch: RecordPatch) {
-  return Object.keys(patch).filter((key) => JSON.stringify(current[key]) !== JSON.stringify(patch[key as keyof RecordPatch]));
+  return Object.keys(patch).filter(
+    key =>
+      JSON.stringify(current[key]) !==
+      JSON.stringify(patch[key as keyof RecordPatch])
+  );
 }
 
-async function nextAvailableSlug(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, title: string) {
-  const base = title
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 130) || "psec-record";
+async function nextAvailableSlug(
+  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+  title: string
+) {
+  const base =
+    title
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 130) || "psec-record";
   for (let suffix = 0; suffix < 50; suffix += 1) {
     const slug = suffix ? `${base}-${suffix + 1}` : base;
-    const existing = await db.select({ id: records.id }).from(records).where(eq(records.slug, slug)).limit(1);
+    const existing = await db
+      .select({ id: records.id })
+      .from(records)
+      .where(eq(records.slug, slug))
+      .limit(1);
     if (!existing.length) return slug;
   }
   return `${base}-${Date.now().toString(36)}`.slice(0, 160);
@@ -157,30 +210,92 @@ export async function appendRecord(input: {
   note?: string;
 }) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database is not available" });
-  if (!input.summary.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "A revision summary is required" });
+  if (!db)
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Database is not available",
+    });
+  if (!input.summary.trim())
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "A revision summary is required",
+    });
   const patch = normalizedPatch(input.patch);
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      return await db.transaction(async (tx) => {
-        const current = (await tx.select().from(records).where(and(eq(records.id, input.recordId), isNull(records.deletedAt))).limit(1))[0];
-        if (!current) throw new TRPCError({ code: "NOT_FOUND", message: "Record not found" });
-        if (patch.status && patch.status === current.status && ["review_passed", "review_rejected", "review_needs_revision"].includes(input.action)) {
-          throw new TRPCError({ code: "CONFLICT", message: "This review decision has already been recorded" });
+      return await db.transaction(async tx => {
+        const current = (
+          await tx
+            .select()
+            .from(records)
+            .where(
+              and(eq(records.id, input.recordId), isNull(records.deletedAt))
+            )
+            .limit(1)
+        )[0];
+        if (!current)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Record not found",
+          });
+        if (
+          patch.status &&
+          patch.status === current.status &&
+          [
+            "review_passed",
+            "review_rejected",
+            "review_needs_revision",
+          ].includes(input.action)
+        ) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "This review decision has already been recorded",
+          });
         }
-        if (patch.status && patch.status !== current.status && !transitions[current.status].includes(patch.status)) {
-          throw new TRPCError({ code: "CONFLICT", message: `Cannot move a ${current.status} record to ${patch.status}` });
+        if (
+          patch.status &&
+          patch.status !== current.status &&
+          !transitions[current.status].includes(patch.status)
+        ) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `Cannot move a ${current.status} record to ${patch.status}`,
+          });
         }
         const currentSnapshot = recordSnapshot(current);
         const fields = changedFields(currentSnapshot, patch);
-        if (!fields.length) throw new TRPCError({ code: "CONFLICT", message: "This action would not change the record" });
-        const latest = (await tx.select({ revisionNo: recordRevisions.revisionNo }).from(recordRevisions).where(eq(recordRevisions.recordId, current.id)).orderBy(desc(recordRevisions.revisionNo)).limit(1))[0];
+        if (!fields.length)
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "This action would not change the record",
+          });
+        const latest = (
+          await tx
+            .select({ revisionNo: recordRevisions.revisionNo })
+            .from(recordRevisions)
+            .where(eq(recordRevisions.recordId, current.id))
+            .orderBy(desc(recordRevisions.revisionNo))
+            .limit(1)
+        )[0];
         const revisionNo = (latest?.revisionNo || 0) + 1;
         const now = new Date();
-        const effectivePatch: RecordPatch = { ...patch, revisionCount: revisionNo, reviewedAt: patch.reviewedAt, publishedAt: patch.publishedAt } as RecordPatch;
-        await tx.update(records).set({ ...effectivePatch, updatedAt: now }).where(eq(records.id, current.id));
-        const next = { ...current, ...effectivePatch, updatedAt: now, revisionCount: revisionNo } as typeof records.$inferSelect;
+        const effectivePatch: RecordPatch = {
+          ...patch,
+          revisionCount: revisionNo,
+          reviewedAt: patch.reviewedAt,
+          publishedAt: patch.publishedAt,
+        } as RecordPatch;
+        await tx
+          .update(records)
+          .set({ ...effectivePatch, updatedAt: now })
+          .where(eq(records.id, current.id));
+        const next = {
+          ...current,
+          ...effectivePatch,
+          updatedAt: now,
+          revisionCount: revisionNo,
+        } as typeof records.$inferSelect;
         const inserted = await tx.insert(recordRevisions).values({
           recordId: current.id,
           revisionNo,
@@ -194,30 +309,56 @@ export async function appendRecord(input: {
           note: clean(input.note),
           createdAt: now,
         });
-        return { record: next, revisionNo, revisionId: Number(inserted[0].insertId) };
+        return {
+          record: next,
+          revisionNo,
+          revisionId: Number(inserted[0].insertId),
+        };
       });
     } catch (error) {
-      if (attempt === 2 || !(error instanceof Error) || !/duplicate|unique/i.test(error.message)) throw error;
+      if (
+        attempt === 2 ||
+        !(error instanceof Error) ||
+        !/duplicate|unique/i.test(error.message)
+      )
+        throw error;
     }
   }
-  throw new TRPCError({ code: "CONFLICT", message: "Could not allocate a revision number" });
+  throw new TRPCError({
+    code: "CONFLICT",
+    message: "Could not allocate a revision number",
+  });
 }
 
-export async function createProjectRecord(input: ProjectSubmissionInput, actor?: Partial<RecordActor>) {
+export async function createProjectRecord(
+  input: ProjectSubmissionInput,
+  actor?: Partial<RecordActor>
+) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database is not available" });
+  if (!db)
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Database is not available",
+    });
   const submitter = input.memberName.trim();
   const title = input.title.trim();
   const abstract = input.abstract.trim();
-  if (!submitter || !title || !abstract) throw new TRPCError({ code: "BAD_REQUEST", message: "Submitter name, title, and one-sentence summary are required" });
+  if (!submitter || !title || !abstract)
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Submitter name, title, and one-sentence summary are required",
+    });
   const now = new Date();
   const slug = await nextAvailableSlug(db, title);
-  const lifecycle = input.lifecycle && lifecycleValues.has(input.lifecycle) ? input.lifecycle : "idea";
+  const lifecycle =
+    input.lifecycle && lifecycleValues.has(input.lifecycle)
+      ? input.lifecycle
+      : "idea";
   const inserted = await db.insert(records).values({
     slug,
     recordKind: "project",
     discipline: clean(input.discipline) || "Social Psychology",
-    category: "Club Projects",
+    category: projectCategoryForLifecycle(lifecycle),
     status: "pending",
     lifecycle,
     visibility: "public",
@@ -237,8 +378,14 @@ export async function createProjectRecord(input: ProjectSubmissionInput, actor?:
     updatedAt: now,
   });
   const recordId = Number(inserted[0].insertId);
-  const record = (await db.select().from(records).where(eq(records.id, recordId)).limit(1))[0];
-  if (!record) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Record could not be created" });
+  const record = (
+    await db.select().from(records).where(eq(records.id, recordId)).limit(1)
+  )[0];
+  if (!record)
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Record could not be created",
+    });
   await db.insert(recordRevisions).values({
     recordId,
     revisionNo: 1,
@@ -252,13 +399,30 @@ export async function createProjectRecord(input: ProjectSubmissionInput, actor?:
     note: "Created through the member submission form",
     createdAt: now,
   });
-  if (input.attachments?.length) await appendRecordAttachments({ recordId, attachments: input.attachments, actor: { name: actor?.name || submitter, role: actor?.role || "member", openId: actor?.openId } });
+  if (input.attachments?.length)
+    await appendRecordAttachments({
+      recordId,
+      attachments: input.attachments,
+      actor: {
+        name: actor?.name || submitter,
+        role: actor?.role || "member",
+        openId: actor?.openId,
+      },
+    });
   return { id: recordId, slug, revisionNo: input.attachments?.length ? 2 : 1 };
 }
 
-async function appendRecordAttachments(input: { recordId: number; attachments: RecordAttachmentInput[]; actor: RecordActor }) {
+async function appendRecordAttachments(input: {
+  recordId: number;
+  attachments: RecordAttachmentInput[];
+  actor: RecordActor;
+}) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database is not available" });
+  if (!db)
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Database is not available",
+    });
   const appended = await appendRecord({
     recordId: input.recordId,
     patch: { revisionCount: 2 } as RecordPatch,
@@ -267,9 +431,17 @@ async function appendRecordAttachments(input: { recordId: number; attachments: R
     summary: `${input.attachments.length} attachment${input.attachments.length === 1 ? "" : "s"} added`,
   });
   for (const file of input.attachments) {
-    const safeName = file.fileName.replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 180) || "attachment";
-    const base64 = file.data.includes(",") ? file.data.split(",").pop() : file.data;
-    const stored = await storagePut(`psec-records/${input.recordId}/${Date.now()}-${safeName}`, Buffer.from(base64 || "", "base64"), file.mimeType || "application/octet-stream");
+    const safeName =
+      file.fileName.replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 180) ||
+      "attachment";
+    const base64 = file.data.includes(",")
+      ? file.data.split(",").pop()
+      : file.data;
+    const stored = await storagePut(
+      `psec-records/${input.recordId}/${Date.now()}-${safeName}`,
+      Buffer.from(base64 || "", "base64"),
+      file.mimeType || "application/octet-stream"
+    );
     await db.insert(attachments).values({
       recordId: input.recordId,
       revisionId: appended.revisionId,
@@ -285,44 +457,116 @@ async function appendRecordAttachments(input: { recordId: number; attachments: R
   }
 }
 
-export async function listPublicRecords(filters?: { discipline?: string; recordKind?: "reference" | "project"; lifecycle?: RecordLifecycle }) {
+export async function listPublicRecords(filters?: {
+  discipline?: string;
+  recordKind?: "reference" | "project";
+  lifecycle?: RecordLifecycle;
+}) {
   const db = await getDb();
   if (!db) return [];
-  const rows = await db.select().from(records).where(and(eq(records.status, "published"), eq(records.visibility, "public"), isNull(records.deletedAt))).orderBy(desc(records.publishedAt), desc(records.createdAt));
-  const filtered = rows.filter((row) => (!filters?.discipline || row.discipline === filters.discipline) && (!filters?.recordKind || row.recordKind === filters.recordKind) && (!filters?.lifecycle || row.lifecycle === filters.lifecycle));
-  return Promise.all(filtered.map(async (row) => {
-    const files = await db.select({ id: attachments.id }).from(attachments).where(and(eq(attachments.recordId, row.id), eq(attachments.visibility, "public"), isNull(attachments.deletedAt)));
-    return { ...row, author: row.authorName, attachmentCount: files.length };
-  }));
+  const rows = await db
+    .select()
+    .from(records)
+    .where(
+      and(
+        eq(records.status, "published"),
+        eq(records.visibility, "public"),
+        isNull(records.deletedAt)
+      )
+    )
+    .orderBy(desc(records.publishedAt), desc(records.createdAt));
+  const filtered = rows.filter(
+    row =>
+      (!filters?.discipline || row.discipline === filters.discipline) &&
+      (!filters?.recordKind || row.recordKind === filters.recordKind) &&
+      (!filters?.lifecycle || row.lifecycle === filters.lifecycle)
+  );
+  return Promise.all(
+    filtered.map(async row => {
+      const files = await db
+        .select({ id: attachments.id })
+        .from(attachments)
+        .where(
+          and(
+            eq(attachments.recordId, row.id),
+            eq(attachments.visibility, "public"),
+            isNull(attachments.deletedAt)
+          )
+        );
+      return { ...row, author: row.authorName, attachmentCount: files.length };
+    })
+  );
 }
 
-export async function listPendingRecords(filters?: { discipline?: string; from?: number; to?: number }) {
+export async function listPendingRecords(filters?: {
+  discipline?: string;
+  from?: number;
+  to?: number;
+}) {
   const db = await getDb();
   if (!db) return [];
-  const rows = await db.select().from(records).where(and(eq(records.status, "pending"), isNull(records.deletedAt))).orderBy(desc(records.createdAt));
-  const filtered = rows.filter((row) => {
+  const rows = await db
+    .select()
+    .from(records)
+    .where(and(eq(records.status, "pending"), isNull(records.deletedAt)))
+    .orderBy(desc(records.createdAt));
+  const filtered = rows.filter(row => {
     const timestamp = new Date(row.createdAt).getTime();
-    return (!filters?.discipline || row.discipline === filters.discipline) && (!filters?.from || timestamp >= filters.from) && (!filters?.to || timestamp <= filters.to);
+    return (
+      (!filters?.discipline || row.discipline === filters.discipline) &&
+      (!filters?.from || timestamp >= filters.from) &&
+      (!filters?.to || timestamp <= filters.to)
+    );
   });
-  return Promise.all(filtered.map(async (row) => ({
-    ...row,
-    memberName: row.authorName || "",
-    memberId: row.authorMemberId || "",
-    submittedAt: row.createdAt,
-    attachmentName: null,
-    attachmentUrl: null,
-    attachments: (await db.select({ id: attachments.id, fileName: attachments.fileName, storageKey: attachments.storageKey, mimeType: attachments.mimeType, sizeBytes: attachments.sizeBytes, kind: attachments.kind }).from(attachments).where(and(eq(attachments.recordId, row.id), isNull(attachments.deletedAt))).orderBy(desc(attachments.createdAt))).map((file) => ({ ...file, url: `/storage/${file.storageKey}` })),
-  })));
+  return Promise.all(
+    filtered.map(async row => ({
+      ...row,
+      memberName: row.authorName || "",
+      memberId: row.authorMemberId || "",
+      submittedAt: row.createdAt,
+      attachmentName: null,
+      attachmentUrl: null,
+      attachments: (
+        await db
+          .select({
+            id: attachments.id,
+            fileName: attachments.fileName,
+            storageKey: attachments.storageKey,
+            mimeType: attachments.mimeType,
+            sizeBytes: attachments.sizeBytes,
+            kind: attachments.kind,
+          })
+          .from(attachments)
+          .where(
+            and(eq(attachments.recordId, row.id), isNull(attachments.deletedAt))
+          )
+          .orderBy(desc(attachments.createdAt))
+      ).map(file => ({ ...file, url: `/storage/${file.storageKey}` })),
+    }))
+  );
 }
 
 export async function getRecordHistory(recordId: number) {
   const db = await getDb();
   if (!db) return [];
-  const history = await db.select().from(recordRevisions).where(eq(recordRevisions.recordId, recordId)).orderBy(desc(recordRevisions.revisionNo));
-  return history.map((revision) => ({ ...revision, submissionId: revision.recordId, editor: revision.editorName || "PSEC" }));
+  const history = await db
+    .select()
+    .from(recordRevisions)
+    .where(eq(recordRevisions.recordId, recordId))
+    .orderBy(desc(recordRevisions.revisionNo));
+  return history.map(revision => ({
+    ...revision,
+    submissionId: revision.recordId,
+    editor: revision.editorName || "PSEC",
+  }));
 }
 
-export async function updateRecordAsAdmin(input: { id: number; actor: RecordActor; values: ProjectSubmissionInput; note?: string }) {
+export async function updateRecordAsAdmin(input: {
+  id: number;
+  actor: RecordActor;
+  values: ProjectSubmissionInput;
+  note?: string;
+}) {
   return appendRecord({
     recordId: input.id,
     actor: input.actor,
@@ -342,11 +586,32 @@ export async function updateRecordAsAdmin(input: { id: number; actor: RecordActo
       authorName: clean(input.values.memberName),
       authorMemberId: clean(input.values.memberId),
       lifecycle: input.values.lifecycle || "idea",
+      category: projectCategoryForLifecycle(input.values.lifecycle || "idea"),
     },
   });
 }
 
-export async function approveRecord(input: { id: number; actor: RecordActor; discipline?: string }) {
+export async function approveRecord(input: {
+  id: number;
+  actor: RecordActor;
+  discipline?: string;
+  category: ProjectCategory;
+}) {
+  const db = await getDb();
+  if (!db)
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Database is not available",
+    });
+  const current = (
+    await db
+      .select({ lifecycle: records.lifecycle })
+      .from(records)
+      .where(and(eq(records.id, input.id), isNull(records.deletedAt)))
+      .limit(1)
+  )[0];
+  if (!current)
+    throw new TRPCError({ code: "NOT_FOUND", message: "Record not found" });
   return appendRecord({
     recordId: input.id,
     actor: input.actor,
@@ -355,6 +620,8 @@ export async function approveRecord(input: { id: number; actor: RecordActor; dis
     patch: {
       status: "published",
       discipline: clean(input.discipline) || undefined,
+      category: input.category,
+      lifecycle: lifecycleForProjectCategory(input.category, current.lifecycle),
       reviewedBy: input.actor.name,
       reviewedAt: new Date(),
       publishedAt: new Date(),
@@ -364,23 +631,43 @@ export async function approveRecord(input: { id: number; actor: RecordActor; dis
   });
 }
 
-export async function rejectRecord(input: { id: number; actor: RecordActor; comment: string }) {
+export async function rejectRecord(input: {
+  id: number;
+  actor: RecordActor;
+  comment: string;
+}) {
   return appendRecord({
     recordId: input.id,
     actor: input.actor,
     action: "review_rejected",
     summary: "Rejected with a review comment",
     note: input.comment,
-    patch: { status: "rejected", reviewComment: input.comment, reviewedBy: input.actor.name, reviewedAt: new Date() },
+    patch: {
+      status: "rejected",
+      reviewComment: input.comment,
+      reviewedBy: input.actor.name,
+      reviewedAt: new Date(),
+    },
   });
 }
 
 export async function deleteRecordAsAdmin(id: number, confirmTitle: string) {
   const db = await getDb();
   if (!db) return null;
-  const current = (await db.select({ id: records.id, title: records.title }).from(records).where(and(eq(records.id, id), isNull(records.deletedAt))).limit(1))[0];
-  if (!current) throw new TRPCError({ code: "NOT_FOUND", message: "Record not found" });
-  if (current.title !== confirmTitle) throw new TRPCError({ code: "BAD_REQUEST", message: "Confirmation title does not match" });
+  const current = (
+    await db
+      .select({ id: records.id, title: records.title })
+      .from(records)
+      .where(and(eq(records.id, id), isNull(records.deletedAt)))
+      .limit(1)
+  )[0];
+  if (!current)
+    throw new TRPCError({ code: "NOT_FOUND", message: "Record not found" });
+  if (current.title !== confirmTitle)
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Confirmation title does not match",
+    });
   await appendRecord({
     recordId: id,
     actor: { name: "PSEC admin", role: "admin" },
@@ -391,44 +678,189 @@ export async function deleteRecordAsAdmin(id: number, confirmTitle: string) {
   return current;
 }
 
-export async function listRecentPublishedRecords(limit = 5) {
-  const rows = await listPublicRecords();
-  return rows.slice(0, limit).map((row) => ({ id: row.id, title: row.title, discipline: row.discipline, category: row.category, status: row.status, reviewedAt: row.reviewedAt }));
+export function assertOwnerCanDeleteRecord(
+  record: Pick<
+    typeof records.$inferSelect,
+    "ownerOpenId" | "recordKind" | "title"
+  >,
+  ownerOpenId: string,
+  confirmTitle: string
+) {
+  if (record.recordKind !== "project" || record.ownerOpenId !== ownerOpenId) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Only the project owner can delete this record",
+    });
+  }
+  if (record.title !== confirmTitle) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Confirmation title does not match",
+    });
+  }
 }
 
+export async function deleteRecordAsOwner(input: {
+  id: number;
+  confirmTitle: string;
+  ownerOpenId: string;
+  actor: RecordActor;
+}) {
+  const db = await getDb();
+  if (!db)
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Database is not available",
+    });
+
+  return db.transaction(async tx => {
+    const current = (
+      await tx
+        .select()
+        .from(records)
+        .where(and(eq(records.id, input.id), isNull(records.deletedAt)))
+        .limit(1)
+        .for("update")
+    )[0];
+    if (!current)
+      throw new TRPCError({ code: "NOT_FOUND", message: "Record not found" });
+    assertOwnerCanDeleteRecord(current, input.ownerOpenId, input.confirmTitle);
+
+    const latest = (
+      await tx
+        .select({ revisionNo: recordRevisions.revisionNo })
+        .from(recordRevisions)
+        .where(eq(recordRevisions.recordId, current.id))
+        .orderBy(desc(recordRevisions.revisionNo))
+        .limit(1)
+    )[0];
+    const revisionNo = (latest?.revisionNo || current.revisionCount) + 1;
+    const deletedAt = new Date();
+    const deletedRecord = {
+      ...current,
+      deletedAt,
+      updatedAt: deletedAt,
+      revisionCount: revisionNo,
+    };
+
+    await tx
+      .update(records)
+      .set({ deletedAt, updatedAt: deletedAt, revisionCount: revisionNo })
+      .where(
+        and(
+          eq(records.id, current.id),
+          eq(records.ownerOpenId, input.ownerOpenId),
+          isNull(records.deletedAt)
+        )
+      );
+    await tx
+      .update(attachments)
+      .set({ deletedAt })
+      .where(
+        and(eq(attachments.recordId, current.id), isNull(attachments.deletedAt))
+      );
+    await tx.insert(recordRevisions).values({
+      recordId: current.id,
+      revisionNo,
+      action: "deleted_by_owner",
+      summary: "Deleted by project owner after title confirmation",
+      changedFields: ["deletedAt"],
+      snapshotJson: JSON.stringify(recordSnapshot(deletedRecord)),
+      editorOpenId: input.actor.openId || null,
+      editorName: input.actor.name.slice(0, 160),
+      editorRole: "member",
+      note: "The record and its attachments were removed from member and public views.",
+      createdAt: deletedAt,
+    });
+    return { id: current.id, title: current.title };
+  });
+}
+
+export async function listRecentPublishedRecords(limit = 5) {
+  const rows = await listPublicRecords();
+  return rows.slice(0, limit).map(row => ({
+    id: row.id,
+    title: row.title,
+    discipline: row.discipline,
+    category: row.category,
+    status: row.status,
+    reviewedAt: row.reviewedAt,
+  }));
+}
 
 async function requireRecordOwner(recordId: number, ownerOpenId: string) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database is not available" });
-  const row = (await db.select().from(records).where(and(eq(records.id, recordId), isNull(records.deletedAt))).limit(1))[0];
-  if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Record not found" });
-  if (row.ownerOpenId !== ownerOpenId) throw new TRPCError({ code: "FORBIDDEN", message: "Only the record owner can append to this record" });
+  if (!db)
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Database is not available",
+    });
+  const row = (
+    await db
+      .select()
+      .from(records)
+      .where(and(eq(records.id, recordId), isNull(records.deletedAt)))
+      .limit(1)
+  )[0];
+  if (!row)
+    throw new TRPCError({ code: "NOT_FOUND", message: "Record not found" });
+  if (row.ownerOpenId !== ownerOpenId)
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Only the record owner can append to this record",
+    });
   return row;
 }
 
 async function publicAttachmentsForRecord(recordId: number) {
   const db = await getDb();
   if (!db) return [];
-  const rows = await db.select({
-    id: attachments.id,
-    revisionId: attachments.revisionId,
-    fileName: attachments.fileName,
-    storageKey: attachments.storageKey,
-    mimeType: attachments.mimeType,
-    sizeBytes: attachments.sizeBytes,
-    kind: attachments.kind,
-    visibility: attachments.visibility,
-    createdAt: attachments.createdAt,
-  }).from(attachments).where(and(eq(attachments.recordId, recordId), eq(attachments.visibility, "public"), isNull(attachments.deletedAt))).orderBy(desc(attachments.createdAt));
-  return rows.map((row) => ({ ...row, url: `/storage/${row.storageKey}` }));
+  const rows = await db
+    .select({
+      id: attachments.id,
+      revisionId: attachments.revisionId,
+      fileName: attachments.fileName,
+      storageKey: attachments.storageKey,
+      mimeType: attachments.mimeType,
+      sizeBytes: attachments.sizeBytes,
+      kind: attachments.kind,
+      visibility: attachments.visibility,
+      createdAt: attachments.createdAt,
+    })
+    .from(attachments)
+    .where(
+      and(
+        eq(attachments.recordId, recordId),
+        eq(attachments.visibility, "public"),
+        isNull(attachments.deletedAt)
+      )
+    )
+    .orderBy(desc(attachments.createdAt));
+  return rows.map(row => ({ ...row, url: `/storage/${row.storageKey}` }));
 }
 
 export async function getPublicRecordBySlug(slug: string) {
   const db = await getDb();
   if (!db) return null;
-  const record = (await db.select().from(records).where(and(eq(records.slug, slug), eq(records.status, "published"), eq(records.visibility, "public"), isNull(records.deletedAt))).limit(1))[0];
+  const record = (
+    await db
+      .select()
+      .from(records)
+      .where(
+        and(
+          eq(records.slug, slug),
+          eq(records.status, "published"),
+          eq(records.visibility, "public"),
+          isNull(records.deletedAt)
+        )
+      )
+      .limit(1)
+  )[0];
   if (!record) return null;
-  return { ...record, attachments: await publicAttachmentsForRecord(record.id) };
+  return {
+    ...record,
+    attachments: await publicAttachmentsForRecord(record.id),
+  };
 }
 
 export async function listPublicRecordTimeline(slug: string) {
@@ -436,16 +868,20 @@ export async function listPublicRecordTimeline(slug: string) {
   if (!record) return null;
   const db = await getDb();
   if (!db) return null;
-  const revisions = await db.select({
-    id: recordRevisions.id,
-    revisionNo: recordRevisions.revisionNo,
-    action: recordRevisions.action,
-    summary: recordRevisions.summary,
-    changedFields: recordRevisions.changedFields,
-    editorName: recordRevisions.editorName,
-    editorRole: recordRevisions.editorRole,
-    createdAt: recordRevisions.createdAt,
-  }).from(recordRevisions).where(eq(recordRevisions.recordId, record.id)).orderBy(recordRevisions.revisionNo);
+  const revisions = await db
+    .select({
+      id: recordRevisions.id,
+      revisionNo: recordRevisions.revisionNo,
+      action: recordRevisions.action,
+      summary: recordRevisions.summary,
+      changedFields: recordRevisions.changedFields,
+      editorName: recordRevisions.editorName,
+      editorRole: recordRevisions.editorRole,
+      createdAt: recordRevisions.createdAt,
+    })
+    .from(recordRevisions)
+    .where(eq(recordRevisions.recordId, record.id))
+    .orderBy(recordRevisions.revisionNo);
   return { record, revisions };
 }
 
@@ -465,11 +901,17 @@ export async function getEvidencePack(slug: string) {
 export async function listMyRecords(ownerOpenId: string) {
   const db = await getDb();
   if (!db) return [];
-  const rows = await db.select().from(records).where(and(eq(records.ownerOpenId, ownerOpenId), isNull(records.deletedAt))).orderBy(desc(records.updatedAt));
-  return Promise.all(rows.map(async (record) => ({
-    ...record,
-    attachments: await publicAttachmentsForRecord(record.id),
-  })));
+  const rows = await db
+    .select()
+    .from(records)
+    .where(and(eq(records.ownerOpenId, ownerOpenId), isNull(records.deletedAt)))
+    .orderBy(desc(records.updatedAt));
+  return Promise.all(
+    rows.map(async record => ({
+      ...record,
+      attachments: await publicAttachmentsForRecord(record.id),
+    }))
+  );
 }
 
 export async function appendResultAsOwner(input: {
@@ -484,8 +926,12 @@ export async function appendResultAsOwner(input: {
   attachments?: RecordAttachmentInput[];
 }) {
   await requireRecordOwner(input.id, input.ownerOpenId);
-  if (!input.results.trim() && !(input.attachments?.length)) {
-    throw new TRPCError({ code: "BAD_REQUEST", message: "Add a result, conclusion, or at least one supporting attachment" });
+  if (!input.results.trim() && !input.attachments?.length) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        "Add a result, conclusion, or at least one supporting attachment",
+    });
   }
   const appended = await appendRecord({
     recordId: input.id,
@@ -498,19 +944,43 @@ export async function appendResultAsOwner(input: {
       nextQuestion: clean(input.nextQuestion),
       ethicsNotes: clean(input.ethicsNotes),
       lifecycle: "completed",
+      category: "Completed Experimental Projects",
     },
   });
-  if (input.attachments?.length) await storeRecordAttachmentsForRevision({ recordId: input.id, revisionId: appended.revisionId, attachments: input.attachments, actor: input.actor });
+  if (input.attachments?.length)
+    await storeRecordAttachmentsForRevision({
+      recordId: input.id,
+      revisionId: appended.revisionId,
+      attachments: input.attachments,
+      actor: input.actor,
+    });
   return appended;
 }
 
-async function storeRecordAttachmentsForRevision(input: { recordId: number; revisionId: number; attachments: RecordAttachmentInput[]; actor: RecordActor }) {
+async function storeRecordAttachmentsForRevision(input: {
+  recordId: number;
+  revisionId: number;
+  attachments: RecordAttachmentInput[];
+  actor: RecordActor;
+}) {
   const db = await getDb();
-  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database is not available" });
+  if (!db)
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Database is not available",
+    });
   for (const file of input.attachments) {
-    const safeName = file.fileName.replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 180) || "attachment";
-    const base64 = file.data.includes(",") ? file.data.split(",").pop() : file.data;
-    const stored = await storagePut(`psec-records/${input.recordId}/${Date.now()}-${safeName}`, Buffer.from(base64 || "", "base64"), file.mimeType || "application/octet-stream");
+    const safeName =
+      file.fileName.replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 180) ||
+      "attachment";
+    const base64 = file.data.includes(",")
+      ? file.data.split(",").pop()
+      : file.data;
+    const stored = await storagePut(
+      `psec-records/${input.recordId}/${Date.now()}-${safeName}`,
+      Buffer.from(base64 || "", "base64"),
+      file.mimeType || "application/octet-stream"
+    );
     await db.insert(attachments).values({
       recordId: input.recordId,
       revisionId: input.revisionId,
@@ -526,6 +996,8 @@ async function storeRecordAttachmentsForRevision(input: { recordId: number; revi
   }
 }
 
-export function asRecordInput(input: ProjectSubmissionInput): ProjectSubmissionInput {
+export function asRecordInput(
+  input: ProjectSubmissionInput
+): ProjectSubmissionInput {
   return input;
 }

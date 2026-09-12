@@ -9,7 +9,20 @@ import { getDb } from "../db";
 async function canReadRecordAttachment(key: string, req: Request) {
   const db = await getDb();
   if (!db) return false;
-  const row = (await db.select({ attachment: attachments, record: records }).from(attachments).innerJoin(records, eq(attachments.recordId, records.id)).where(and(eq(attachments.storageKey, key), isNull(attachments.deletedAt), isNull(records.deletedAt))).limit(1))[0];
+  const row = (
+    await db
+      .select({ attachment: attachments, record: records })
+      .from(attachments)
+      .innerJoin(records, eq(attachments.recordId, records.id))
+      .where(
+        and(
+          eq(attachments.storageKey, key),
+          isNull(attachments.deletedAt),
+          isNull(records.deletedAt)
+        )
+      )
+      .limit(1)
+  )[0];
   if (!row) return false;
   const admin = isAdminSession(req);
   let userOpenId: string | null = null;
@@ -18,8 +31,13 @@ async function canReadRecordAttachment(key: string, req: Request) {
   } catch {
     userOpenId = null;
   }
-  if (admin || userOpenId === row.record.ownerOpenId) return true;
-  return row.record.status === "published" && row.record.visibility === "public" && row.attachment.visibility === "public";
+  if (admin || (userOpenId && userOpenId === row.record.ownerOpenId))
+    return true;
+  return (
+    row.record.status === "published" &&
+    row.record.visibility === "public" &&
+    row.attachment.visibility === "public"
+  );
 }
 
 export function registerStorageProxy(app: Express) {
@@ -31,21 +49,46 @@ export function registerStorageProxy(app: Express) {
     }
 
     if (key.startsWith("psec-records/")) {
-      if (!await canReadRecordAttachment(key, req)) {
+      if (!(await canReadRecordAttachment(key, req))) {
         res.status(404).send("Not found");
         return;
       }
     } else {
       const isPublishedExperimentMedia = key.startsWith("psec-experiments/");
       const isPrivateEvidence = key.startsWith("psec-evidence/");
-      if (isPrivateEvidence && !isAdminSession(req)) {
+      if (isPrivateEvidence) {
         const db = await getDb();
-        const publicEvidence = db ? await db.select({ id: attachments.id }).from(attachments).where(and(eq(attachments.storageKey, key), eq(attachments.visibility, "public"))).limit(1) : [];
-        if (!publicEvidence.length) {
+        const evidence = db
+          ? (
+              await db
+                .select({
+                  recordId: attachments.recordId,
+                  visibility: attachments.visibility,
+                })
+                .from(attachments)
+                .where(
+                  and(
+                    eq(attachments.storageKey, key),
+                    isNull(attachments.deletedAt)
+                  )
+                )
+                .limit(1)
+            )[0]
+          : null;
+        if (
+          !evidence ||
+          (evidence.recordId
+            ? (evidence.visibility !== "public" && !isAdminSession(req)) ||
+              !(await canReadRecordAttachment(key, req))
+            : !isAdminSession(req) && evidence.visibility !== "public")
+        ) {
           res.status(404).send("Not found");
           return;
         }
-      } else if (!isPublishedExperimentMedia && !isPrivateEvidence && (!key.startsWith("psec-submissions/") || !isAdminSession(req))) {
+      } else if (
+        !isPublishedExperimentMedia &&
+        (!key.startsWith("psec-submissions/") || !isAdminSession(req))
+      ) {
         res.status(404).send("Not found");
         return;
       }
@@ -57,12 +100,19 @@ export function registerStorageProxy(app: Express) {
     }
 
     try {
-      const forgeUrl = new URL("v1/storage/presign/get", ENV.legacyStorageApiUrl.replace(/\/+$/, "") + "/");
+      const forgeUrl = new URL(
+        "v1/storage/presign/get",
+        ENV.legacyStorageApiUrl.replace(/\/+$/, "") + "/"
+      );
       forgeUrl.searchParams.set("path", key);
-      const forgeResp = await fetch(forgeUrl, { headers: { Authorization: `Bearer ${ENV.legacyStorageApiKey}` } });
+      const forgeResp = await fetch(forgeUrl, {
+        headers: { Authorization: `Bearer ${ENV.legacyStorageApiKey}` },
+      });
       if (!forgeResp.ok) {
         const body = await forgeResp.text().catch(() => "");
-        console.error(`[StorageProxy] forge error: ${forgeResp.status} ${body}`);
+        console.error(
+          `[StorageProxy] forge error: ${forgeResp.status} ${body}`
+        );
         res.status(502).send("Storage backend error");
         return;
       }
