@@ -23,7 +23,7 @@ async function canReadRecordAttachment(key: string, req: Request) {
 }
 
 export function registerStorageProxy(app: Express) {
-  app.get("/manus-storage/*", async (req, res) => {
+  app.get("/storage/*", async (req, res) => {
     const key = (req.params as Record<string, string>)[0];
     if (!key) {
       res.status(400).send("Missing storage key");
@@ -51,15 +51,15 @@ export function registerStorageProxy(app: Express) {
       }
     }
 
-    if (!ENV.forgeApiUrl || !ENV.forgeApiKey) {
+    if (!ENV.legacyStorageApiUrl || !ENV.legacyStorageApiKey) {
       res.status(500).send("Storage proxy not configured");
       return;
     }
 
     try {
-      const forgeUrl = new URL("v1/storage/presign/get", ENV.forgeApiUrl.replace(/\/+$/, "") + "/");
+      const forgeUrl = new URL("v1/storage/presign/get", ENV.legacyStorageApiUrl.replace(/\/+$/, "") + "/");
       forgeUrl.searchParams.set("path", key);
-      const forgeResp = await fetch(forgeUrl, { headers: { Authorization: `Bearer ${ENV.forgeApiKey}` } });
+      const forgeResp = await fetch(forgeUrl, { headers: { Authorization: `Bearer ${ENV.legacyStorageApiKey}` } });
       if (!forgeResp.ok) {
         const body = await forgeResp.text().catch(() => "");
         console.error(`[StorageProxy] forge error: ${forgeResp.status} ${body}`);

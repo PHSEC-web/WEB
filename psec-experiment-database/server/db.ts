@@ -1,8 +1,9 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, attachments, evidenceSubmissions, executionRecords, experiments, submissionHistory, submissions, users } from "../drizzle/schema";
+import { InsertUser, attachments, emailLoginCodes, evidenceSubmissions, executionRecords, experiments, submissionHistory, submissions, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { storagePut } from "./storage";
+import { schoolEmailOpenId } from "./emailIdentity";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -38,7 +39,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   if (user.role !== undefined) {
     values.role = user.role;
     updateSet.role = user.role;
-  } else if (user.openId === ENV.ownerOpenId) {
+  } else if (user.openId === schoolEmailOpenId(ENV.ownerEmail)) {
     values.role = "admin";
     updateSet.role = "admin";
   }
@@ -74,7 +75,7 @@ export async function listExecutionRecords(slug: string) {
   const rows = await db.select().from(executionRecords).where(eq(executionRecords.experimentId, target.id)).orderBy(desc(executionRecords.createdAt));
   return Promise.all(rows.map(async (row) => ({
     ...row,
-    attachments: (await db.select({ id: attachments.id, fileName: attachments.fileName, storageKey: attachments.storageKey, mimeType: attachments.mimeType, sizeBytes: attachments.sizeBytes, kind: attachments.kind }).from(attachments).where(and(eq(attachments.executionRecordId, row.id), eq(attachments.visibility, "public"), isNull(attachments.deletedAt))).orderBy(desc(attachments.createdAt))).map((file) => ({ ...file, url: `/manus-storage/${file.storageKey}` })),
+    attachments: (await db.select({ id: attachments.id, fileName: attachments.fileName, storageKey: attachments.storageKey, mimeType: attachments.mimeType, sizeBytes: attachments.sizeBytes, kind: attachments.kind }).from(attachments).where(and(eq(attachments.executionRecordId, row.id), eq(attachments.visibility, "public"), isNull(attachments.deletedAt))).orderBy(desc(attachments.createdAt))).map((file) => ({ ...file, url: `/storage/${file.storageKey}` })),
   })));
 }
 
@@ -96,7 +97,7 @@ export async function listPendingEvidenceSubmissions() {
   const db = await getDb();
   if (!db) return [];
   const rows = await db.select({ evidence: evidenceSubmissions, experimentTitle: experiments.title, experimentSlug: experiments.slug, experimentCategory: experiments.category }).from(evidenceSubmissions).leftJoin(experiments, eq(evidenceSubmissions.experimentId, experiments.id)).where(eq(evidenceSubmissions.status, "pending")).orderBy(desc(evidenceSubmissions.submittedAt));
-  return Promise.all(rows.map(async (row) => ({ ...row.evidence, experimentTitle: row.experimentTitle, experimentSlug: row.experimentSlug, experimentCategory: row.experimentCategory, attachments: (await db.select({ id: attachments.id, fileName: attachments.fileName, storageKey: attachments.storageKey, mimeType: attachments.mimeType, sizeBytes: attachments.sizeBytes, kind: attachments.kind }).from(attachments).where(and(eq(attachments.evidenceSubmissionId, row.evidence.id), isNull(attachments.deletedAt))).orderBy(desc(attachments.createdAt))).map((file) => ({ ...file, url: `/manus-storage/${file.storageKey}` })) })));
+  return Promise.all(rows.map(async (row) => ({ ...row.evidence, experimentTitle: row.experimentTitle, experimentSlug: row.experimentSlug, experimentCategory: row.experimentCategory, attachments: (await db.select({ id: attachments.id, fileName: attachments.fileName, storageKey: attachments.storageKey, mimeType: attachments.mimeType, sizeBytes: attachments.sizeBytes, kind: attachments.kind }).from(attachments).where(and(eq(attachments.evidenceSubmissionId, row.evidence.id), isNull(attachments.deletedAt))).orderBy(desc(attachments.createdAt))).map((file) => ({ ...file, url: `/storage/${file.storageKey}` })) })));
 }
 
 export async function approveEvidenceSubmission(input: { id: number; editor: string }) {
@@ -292,7 +293,7 @@ export async function listPendingSubmissions(filters?: { discipline?: string; fr
   });
   return Promise.all(filtered.map(async (row) => ({
     ...row,
-    attachments: (await db.select({ id: attachments.id, fileName: attachments.fileName, storageKey: attachments.storageKey, mimeType: attachments.mimeType, sizeBytes: attachments.sizeBytes, kind: attachments.kind }).from(attachments).where(and(eq(attachments.submissionId, row.id), isNull(attachments.deletedAt))).orderBy(desc(attachments.createdAt))).map((file) => ({ ...file, url: `/manus-storage/${file.storageKey}` })),
+    attachments: (await db.select({ id: attachments.id, fileName: attachments.fileName, storageKey: attachments.storageKey, mimeType: attachments.mimeType, sizeBytes: attachments.sizeBytes, kind: attachments.kind }).from(attachments).where(and(eq(attachments.submissionId, row.id), isNull(attachments.deletedAt))).orderBy(desc(attachments.createdAt))).map((file) => ({ ...file, url: `/storage/${file.storageKey}` })),
   })));
 }
 
@@ -302,7 +303,7 @@ export async function listExperimentAttachments(slug: string) {
   const experiment = (await db.select({ id: experiments.id, category: experiments.category }).from(experiments).where(eq(experiments.slug, slug)).limit(1))[0];
   if (!experiment || experiment.category !== "Completed Experimental Projects") return [];
   const rows = await db.select({ id: attachments.id, fileName: attachments.fileName, storageKey: attachments.storageKey, mimeType: attachments.mimeType, sizeBytes: attachments.sizeBytes, kind: attachments.kind, createdAt: attachments.createdAt }).from(attachments).where(and(eq(attachments.experimentId, experiment.id), eq(attachments.visibility, "public"), isNull(attachments.deletedAt))).orderBy(desc(attachments.createdAt));
-  return rows.map((row) => ({ ...row, url: `/manus-storage/${row.storageKey}` }));
+  return rows.map((row) => ({ ...row, url: `/storage/${row.storageKey}` }));
 }
 
 export async function uploadExperimentAttachments(input: { experimentId: number; files: AttachmentInput[]; uploader: string }) {

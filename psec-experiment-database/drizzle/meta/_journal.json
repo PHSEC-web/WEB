@@ -78,6 +78,13 @@
       "when": 1789036852593,
       "tag": "0010_modern_changeling",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1789144957333,
+      "tag": "0011_add_email_login_codes",
+      "breakpoints": true
     }
   ]
 }

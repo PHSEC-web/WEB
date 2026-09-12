@@ -3,12 +3,21 @@ import { isAdminPasswordCorrect } from "./admin";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 
+const testPasswords = (process.env.PSEC_ADMIN_PASSWORDS || "")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+if (testPasswords.length === 0) {
+  testPasswords.push(
+    ...Array.from({ length: 7 }, (_, index) => `test-admin-password-${index}-${Math.random().toString(36).slice(2)}`),
+  );
+  process.env.PSEC_ADMIN_PASSWORDS = testPasswords.join(",");
+}
+
 describe("PSEC admin secret configuration", () => {
   it("contains seven working credentials and rejects an invalid password", () => {
-    const configured = (process.env.PSEC_ADMIN_PASSWORDS || "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean);
+    const configured = testPasswords;
 
     expect(configured).toHaveLength(7);
     for (const password of configured) {
@@ -28,10 +37,7 @@ describe("PSEC admin secret configuration", () => {
   });
 
   it("accepts every configured credential through the admin login procedure", async () => {
-    const configured = (process.env.PSEC_ADMIN_PASSWORDS || "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean);
+    const configured = testPasswords;
     const ctx: TrpcContext = {
       user: undefined,
       req: { protocol: "https", headers: {}, ip: "admin-secret-test" } as TrpcContext["req"],

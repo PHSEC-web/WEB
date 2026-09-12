@@ -6,7 +6,7 @@
 
 ### 1. 登录并提交
 
-打开 **Submit an idea**，填写三个必填项：**Submitter Name、Experiment / project title、One-sentence summary**。系统会要求使用 Manus 账号登录，以便将记录绑定到提交者。其余研究字段和附件可以先留空，日后继续补充。
+打开 **Submit an idea**，填写三个必填项：**Submitter Name、Experiment / project title、One-sentence summary**。系统会要求使用学校邮箱验证码登录，以便将记录绑定到提交者。其余研究字段和附件可以先留空，日后继续补充。
 
 提交后，记录进入 `pending`（待审核）状态，并出现在 **My Records** 页面，而不会出现在公开图书馆。
 

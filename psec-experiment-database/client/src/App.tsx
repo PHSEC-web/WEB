@@ -16,6 +16,7 @@ const MyRecords = lazy(() => import("./pages/MyRecords"));
 const RecordDetail = lazy(() => import("./pages/RecordDetail"));
 const EvidenceSheet = lazy(() => import("./pages/EvidenceSheet"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const Login = lazy(() => import("./pages/Login"));
 
 function PageLoader() {
   return <div className="flex min-h-[45vh] items-center justify-center bg-background" role="status" aria-live="polite"><span className="font-mono text-[10px] uppercase tracking-[.18em] text-muted-foreground">Loading archive…</span></div>;
@@ -31,6 +32,7 @@ function PublicRouter() {
         <Route path="/library/sociology"><Library discipline="Sociology" /></Route>
         <Route path="/library/moral-political-philosophy"><Library discipline="Moral & Political Philosophy" /></Route>
         <Route path="/submit" component={Submission} />
+        <Route path="/login" component={Login} />
         <Route path="/submit-evidence" component={EvidenceSubmission} />
         <Route path="/my-records" component={MyRecords} />
         <Route path="/records/:slug/evidence" component={EvidenceSheet} />

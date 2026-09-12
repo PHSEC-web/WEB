@@ -1,6 +1,6 @@
 import { index, int, json, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
-/** Core user table backing the Manus auth flow. */
+/** Core user table backing school email authentication. */
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
   openId: varchar("openId", { length: 64 }).notNull().unique(),
@@ -12,6 +12,19 @@ export const users = mysqlTable("users", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
+
+export const emailLoginCodes = mysqlTable("emailLoginCodes", {
+  id: int("id").autoincrement().primaryKey(),
+  email: varchar("email", { length: 320 }).notNull(),
+  codeHash: varchar("codeHash", { length: 64 }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  attempts: int("attempts").notNull().default(0),
+  requestedIp: varchar("requestedIp", { length: 64 }),
+  usedAt: timestamp("usedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  emailCreatedIdx: index("email_login_codes_email_created_idx").on(table.email, table.createdAt),
+}));
 
 export const experiments = mysqlTable("experiments", {
   id: int("id").autoincrement().primaryKey(),

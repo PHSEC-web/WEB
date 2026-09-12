@@ -311,7 +311,7 @@ export async function listPendingRecords(filters?: { discipline?: string; from?:
     submittedAt: row.createdAt,
     attachmentName: null,
     attachmentUrl: null,
-    attachments: (await db.select({ id: attachments.id, fileName: attachments.fileName, storageKey: attachments.storageKey, mimeType: attachments.mimeType, sizeBytes: attachments.sizeBytes, kind: attachments.kind }).from(attachments).where(and(eq(attachments.recordId, row.id), isNull(attachments.deletedAt))).orderBy(desc(attachments.createdAt))).map((file) => ({ ...file, url: `/manus-storage/${file.storageKey}` })),
+    attachments: (await db.select({ id: attachments.id, fileName: attachments.fileName, storageKey: attachments.storageKey, mimeType: attachments.mimeType, sizeBytes: attachments.sizeBytes, kind: attachments.kind }).from(attachments).where(and(eq(attachments.recordId, row.id), isNull(attachments.deletedAt))).orderBy(desc(attachments.createdAt))).map((file) => ({ ...file, url: `/storage/${file.storageKey}` })),
   })));
 }
 
@@ -420,7 +420,7 @@ async function publicAttachmentsForRecord(recordId: number) {
     visibility: attachments.visibility,
     createdAt: attachments.createdAt,
   }).from(attachments).where(and(eq(attachments.recordId, recordId), eq(attachments.visibility, "public"), isNull(attachments.deletedAt))).orderBy(desc(attachments.createdAt));
-  return rows.map((row) => ({ ...row, url: `/manus-storage/${row.storageKey}` }));
+  return rows.map((row) => ({ ...row, url: `/storage/${row.storageKey}` }));
 }
 
 export async function getPublicRecordBySlug(slug: string) {

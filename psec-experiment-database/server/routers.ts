@@ -1,12 +1,14 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { COOKIE_NAME } from "@shared/const";
+import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { approveEvidenceSubmission, createEvidenceSubmission, listCompletedExperiments, listExecutionRecords, listExperimentAttachments, listPendingEvidenceSubmissions, rejectEvidenceSubmission, uploadExperimentAttachments, type AttachmentInput } from "./db";
 import { appendResultAsOwner, approveRecord, asRecordInput, createProjectRecord, deleteRecordAsAdmin, getEvidencePack, getPublicRecordBySlug, getRecordHistory, listMyRecords, listPendingRecords, listPublicRecordTimeline, listPublicRecords, listRecentPublishedRecords, rejectRecord, updateRecordAsAdmin, type ProjectSubmissionInput } from "./recordStore";
 import { adminProcedure, assertAdminLoginAllowed, clearAdminSession, isAdminPasswordCorrect, isAdminSession, recordAdminLoginAttempt, setAdminSession } from "./admin";
+import { requestEmailCode, verifyEmailCode } from "./emailAuth";
+import { sdk } from "./_core/sdk";
 
 const optionalText = z.string().max(20_000).optional();
 const allowedAttachmentTypes = new Set(["", "application/pdf", "text/plain", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/csv", "application/json", "application/zip", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "image/jpeg", "image/png", "image/gif", "image/webp"]);
@@ -22,6 +24,33 @@ const uploadFileSchema = z.object({
 const uploadFilesSchema = z.array(uploadFileSchema).max(8).superRefine((files, ctx) => {
   if (files.reduce((total, file) => total + file.sizeBytes, 0) > 32 * 1024 * 1024) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Combined uploads must be 32 MB or smaller" });
 });
+
+const EVIDENCE_RATE_WINDOW_MS = 15 * 60 * 1000;
+const EVIDENCE_RATE_LIMIT = 5;
+const evidenceAttempts = new Map<string, { count: number; windowStartedAt: number }>();
+
+function evidenceRequestKey(req: { headers: Record<string, string | string[] | undefined>; ip?: string }) {
+  const forwarded = req.headers["x-forwarded-for"];
+  const firstForwarded = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(",")[0];
+  return firstForwarded?.trim() || req.ip || "unknown";
+}
+
+function assertEvidenceRateLimit(req: { headers: Record<string, string | string[] | undefined>; ip?: string }) {
+  const key = evidenceRequestKey(req);
+  const now = Date.now();
+  const current = evidenceAttempts.get(key);
+
+  if (!current || now - current.windowStartedAt >= EVIDENCE_RATE_WINDOW_MS) {
+    evidenceAttempts.set(key, { count: 1, windowStartedAt: now });
+    return;
+  }
+
+  if (current.count >= EVIDENCE_RATE_LIMIT) {
+    throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Too many evidence submissions. Please try again later." });
+  }
+
+  current.count += 1;
+}
 
 const submissionFields = z.object({
   memberName: z.string().trim().max(160).default(""),
@@ -53,6 +82,13 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    requestCode: publicProcedure.input(z.object({ email: z.string().trim().email().max(320) })).mutation(({ ctx, input }) => requestEmailCode({ email: input.email, ip: ctx.req.ip || "unknown" })),
+    verifyCode: publicProcedure.input(z.object({ email: z.string().trim().email().max(320), code: z.string().regex(/^\d{6}$/) })).mutation(async ({ ctx, input }) => {
+      const user = await verifyEmailCode(input);
+      const sessionToken = await sdk.createSessionToken(user.openId, { name: user.name });
+      ctx.res.cookie(COOKIE_NAME, sessionToken, { ...getSessionCookieOptions(ctx.req), maxAge: ONE_YEAR_MS });
+      return { user };
+    }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -89,7 +125,10 @@ export const appRouter = router({
   submissions: router({
     latest: publicProcedure.query(() => listRecentPublishedRecords()),
     create: protectedProcedure.input(submissionSchema).mutation(({ ctx, input }) => createProjectRecord(asProjectInput(input), { name: ctx.user.name || input.memberName, role: "member", openId: ctx.user.openId })),
-    evidence: publicProcedure.input(z.object({ submitterName: z.string().trim().min(1).max(160), experimentId: z.number().int().positive(), observationNotes: z.string().max(20_000).optional(), files: uploadFilesSchema.optional() })).mutation(({ input }) => createEvidenceSubmission({ ...input, files: input.files as AttachmentInput[] | undefined })),
+    evidence: publicProcedure.input(z.object({ submitterName: z.string().trim().min(1).max(160), experimentId: z.number().int().positive(), observationNotes: z.string().max(20_000).optional(), files: uploadFilesSchema.optional() })).mutation(({ ctx, input }) => {
+      assertEvidenceRateLimit(ctx.req);
+      return createEvidenceSubmission({ ...input, files: input.files as AttachmentInput[] | undefined });
+    }),
   }),
   admin: router({
     status: publicProcedure.query(({ ctx }) => ({ authenticated: isAdminSession(ctx.req) })),
