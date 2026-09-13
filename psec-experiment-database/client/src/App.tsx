@@ -6,6 +6,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import PsecLayout from "./components/PsecLayout";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { useAuth } from "./_core/hooks/useAuth";
+import { LanguageProvider } from "./contexts/LanguageContext";
 
 const AdminReview = lazy(() => import("./pages/AdminReview"));
 const Home = lazy(() => import("./pages/Home"));
@@ -69,11 +70,13 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
-        <TooltipProvider>
-          <ResumeMemberFlow />
-          <Toaster />
-          <Router />
-        </TooltipProvider>
+        <LanguageProvider>
+          <TooltipProvider>
+            <ResumeMemberFlow />
+            <Toaster />
+            <Router />
+          </TooltipProvider>
+        </LanguageProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );
