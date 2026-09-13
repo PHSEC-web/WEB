@@ -64,6 +64,21 @@ const allowedAttachmentTypes = new Set([
   "image/gif",
   "image/webp",
 ]);
+const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
+const MAX_TOTAL_UPLOAD_BYTES = 32 * 1024 * 1024;
+
+/** Return the decoded size without allocating a Buffer for untrusted input. */
+function decodedUploadBytes(value: string): number | null {
+  const comma = value.indexOf(",");
+  const payload = (comma >= 0 ? value.slice(comma + 1) : value).replace(/\s/g, "");
+  if (!payload) return 0;
+  if (payload.length % 4 === 1 || !/^[A-Za-z0-9+/]*={0,2}$/.test(payload)) {
+    return null;
+  }
+  const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
+  return Math.floor(payload.length * 3 / 4) - padding;
+}
+
 const uploadFileSchema = z
   .object({
     fileName: z.string().trim().min(1).max(240),
@@ -73,7 +88,7 @@ const uploadFileSchema = z
       .number()
       .int()
       .nonnegative()
-      .max(8 * 1024 * 1024),
+      .max(MAX_ATTACHMENT_BYTES),
     kind: z.enum(["photo", "data", "report", "protocol", "other"]),
   })
   .superRefine((value, ctx) => {
@@ -83,14 +98,30 @@ const uploadFileSchema = z
         path: ["mimeType"],
         message: "This file type is not supported",
       });
+    const decodedBytes = decodedUploadBytes(value.data);
+    if (decodedBytes === null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["data"],
+        message: "The uploaded file data is invalid",
+      });
+    } else if (decodedBytes > MAX_ATTACHMENT_BYTES) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["data"],
+        message: "Each uploaded file must be 8 MB or smaller",
+      });
+    }
   });
 const uploadFilesSchema = z
   .array(uploadFileSchema)
   .max(8)
   .superRefine((files, ctx) => {
     if (
-      files.reduce((total, file) => total + file.sizeBytes, 0) >
-      32 * 1024 * 1024
+      files.reduce(
+        (total, file) => total + (decodedUploadBytes(file.data) ?? file.sizeBytes),
+        0,
+      ) > MAX_TOTAL_UPLOAD_BYTES
     )
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

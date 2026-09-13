@@ -512,9 +512,10 @@ async function storeAttachment(
   const base64 = input.data.includes(",")
     ? input.data.split(",").pop()
     : input.data;
+  const binary = Buffer.from(base64 || "", "base64");
   const stored = await storagePut(
     `${prefix}/${Date.now()}-${safeName}`,
-    Buffer.from(base64 || "", "base64"),
+    binary,
     input.mimeType || "application/octet-stream"
   );
   return {
@@ -522,7 +523,7 @@ async function storeAttachment(
     storageKey: stored.key,
     url: stored.url,
     mimeType: input.mimeType || "application/octet-stream",
-    sizeBytes: input.sizeBytes,
+    sizeBytes: binary.byteLength,
     kind: input.kind,
   };
 }
@@ -555,7 +556,7 @@ export async function createSubmission(input: SubmissionCreateInput) {
   const db = await getDb();
   if (!db) return null;
 
-  let attachment: { key: string; url: string } | undefined;
+  let attachment: { key: string; url: string; sizeBytes: number } | undefined;
   if (input.attachmentData) {
     const safeName = (input.attachmentName || "attachment").replace(
       /[^a-zA-Z0-9._-]/g,
@@ -564,11 +565,13 @@ export async function createSubmission(input: SubmissionCreateInput) {
     const base64 = input.attachmentData.includes(",")
       ? input.attachmentData.split(",").pop()
       : input.attachmentData;
-    attachment = await storagePut(
+    const binary = Buffer.from(base64 || "", "base64");
+    const stored = await storagePut(
       `psec-submissions/${Date.now()}-${safeName}`,
-      Buffer.from(base64 || "", "base64"),
+      binary,
       input.attachmentMimeType || "application/octet-stream"
     );
+    attachment = { ...stored, sizeBytes: binary.byteLength };
   }
 
   const now = new Date();
@@ -616,7 +619,7 @@ export async function createSubmission(input: SubmissionCreateInput) {
       fileName: values.attachmentName || "attachment",
       storageKey: attachment.key,
       mimeType: input.attachmentMimeType || "application/octet-stream",
-      sizeBytes: 0,
+      sizeBytes: attachment.sizeBytes,
       kind: "other",
       visibility: "members",
       uploadedByName: values.memberName || values.memberId,

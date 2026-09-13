@@ -1,3 +1,55 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { config as loadDotenv } from "dotenv";
+
+/** Find the package root so the app does not depend on systemd's cwd. */
+function findPackageRoot(startDirectory: string): string | undefined {
+  let directory = path.resolve(startDirectory);
+  while (true) {
+    if (existsSync(path.join(directory, "package.json"))) return directory;
+    const parent = path.dirname(directory);
+    if (parent === directory) return undefined;
+    directory = parent;
+  }
+}
+
+/**
+ * Resolve the environment file used by the server entrypoint.
+ *
+ * The source entrypoint lives under `server/_core`, while the bundled
+ * entrypoint lives under `dist`; both resolve to the same nearest package
+ * root. The cwd fallback keeps standalone artifacts usable when package.json
+ * is not copied alongside dist.
+ */
+export function resolveEnvironmentFile(
+  moduleDirectory = path.dirname(fileURLToPath(import.meta.url)),
+  currentDirectory = process.cwd(),
+): string | undefined {
+  const packageRoot = findPackageRoot(moduleDirectory);
+  const candidates = [
+    packageRoot && path.join(packageRoot, ".env"),
+    path.join(moduleDirectory, ".env"),
+    path.resolve(moduleDirectory, "..", ".env"),
+    path.resolve(currentDirectory, ".env"),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+
+  return Array.from(new Set(candidates)).find(candidate => existsSync(candidate));
+}
+
+function loadEnvironmentFile() {
+  const environmentFile = resolveEnvironmentFile();
+  if (!environmentFile) return;
+
+  const result = loadDotenv({ path: environmentFile, quiet: true });
+  if (result.error) {
+    // Do not include the path or parsed values in startup logs.
+    throw new Error("Unable to load the server environment file");
+  }
+}
+
+loadEnvironmentFile();
+
 export const ENV = {
   cookieSecret: process.env.JWT_SECRET ?? "",
   databaseUrl: process.env.DATABASE_URL ?? "",

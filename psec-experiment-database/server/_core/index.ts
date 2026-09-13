@@ -1,4 +1,3 @@
-import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
@@ -63,4 +62,9 @@ async function startServer() {
   });
 }
 
-startServer().catch(console.error);
+startServer().catch(error => {
+  console.error(error);
+  // Let systemd and other process supervisors treat startup failures as
+  // failures instead of a clean exit after logging the error.
+  process.exitCode = 1;
+});

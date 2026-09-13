@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "./_core/context";
 import { getDb } from "./db";
 import { appRouter } from "./routers";
-import { assertOwnerCanDeleteRecord } from "./recordStore";
+import { assertOwnerCanDeleteRecord, createProjectRecord } from "./recordStore";
 import {
   lifecycleForProjectCategory,
   projectCategoryForLifecycle,
@@ -12,6 +12,10 @@ vi.mock("./db", async importOriginal => ({
   ...(await importOriginal<typeof import("./db")>()),
   getDb: vi.fn(),
 }));
+
+const { storagePut } = vi.hoisted(() => ({ storagePut: vi.fn() }));
+
+vi.mock("./storage", () => ({ storagePut }));
 
 const record = {
   id: 7,
@@ -130,6 +134,119 @@ describe("member project management", () => {
       category: "Idea Pool",
       status: "pending",
     });
+  });
+
+  it("rejects attachment payloads that exceed the decoded file limit", async () => {
+    const oversizedData = Buffer.alloc(8 * 1024 * 1024 + 1).toString("base64");
+    await expect(
+      caller("member-1").records.create({
+        memberName: "Member",
+        title: "Oversized upload",
+        abstract: "A valid summary.",
+        attachments: [
+          {
+            fileName: "large.pdf",
+            data: `data:application/pdf;base64,${oversizedData}`,
+            mimeType: "application/pdf",
+            sizeBytes: 1,
+            kind: "report",
+          },
+        ],
+      })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(getDb).not.toHaveBeenCalled();
+  });
+
+  it("stores the decoded attachment size instead of client metadata", async () => {
+    const payload = Buffer.from("actual attachment bytes");
+    const created = {
+      ...record,
+      slug: "size-metadata-check",
+      lifecycle: "idea",
+      status: "pending",
+      category: "Idea Pool",
+    };
+    const inserts: unknown[] = [];
+    let rootSelections = 0;
+    let txSelections = 0;
+    const tx = {
+      select: () => {
+        txSelections += 1;
+        return {
+          from: () => ({
+            where: () => ({
+              limit: async () => [created],
+              orderBy: () => ({ limit: async () => [{ revisionNo: 1 }] }),
+            }),
+          }),
+        };
+      },
+      update: () => ({
+        set: () => ({ where: async () => undefined }),
+      }),
+      insert: () => ({
+        values: async () => [{ insertId: 2 }],
+      }),
+    };
+    vi.mocked(getDb).mockResolvedValue({
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => {
+              rootSelections += 1;
+              return rootSelections === 1 ? [] : [created];
+            },
+          }),
+        }),
+      }),
+      insert: () => ({
+        values: async (values: unknown) => {
+          inserts.push(values);
+          return [{ insertId: inserts.length === 1 ? 7 : 1 }];
+        },
+      }),
+      transaction: async (fn: (transaction: typeof tx) => unknown) =>
+        fn(tx),
+    } as never);
+    storagePut.mockResolvedValue({
+      key: "psec-records/7/evidence.txt",
+      url: "/storage/psec-records/7/evidence.txt",
+    });
+
+    await expect(
+      createProjectRecord(
+        {
+          memberName: "Member",
+          title: "Size metadata check",
+          abstract: "A valid summary.",
+          attachments: [
+            {
+              fileName: "evidence.txt",
+              data: `data:text/plain;base64,${payload.toString("base64")}`,
+              mimeType: "text/plain",
+              sizeBytes: 0,
+              kind: "report",
+            },
+          ],
+        },
+        { name: "Member", role: "member", openId: "member-1" },
+      ),
+    ).resolves.toMatchObject({ id: 7, slug: "size-metadata-check" });
+
+    const attachmentInsert = inserts.find(
+      value =>
+        typeof value === "object" &&
+        value !== null &&
+        "fileName" in value &&
+        value.fileName === "evidence.txt",
+    );
+    expect(attachmentInsert).toMatchObject({ sizeBytes: payload.byteLength });
+    expect(storagePut).toHaveBeenCalledWith(
+      expect.stringContaining("psec-records/7/"),
+      payload,
+      "text/plain",
+    );
+    expect(txSelections).toBe(2);
   });
 
   it("does not let anonymous visitors delete projects", async () => {

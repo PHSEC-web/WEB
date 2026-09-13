@@ -7,6 +7,7 @@ import PsecLayout from "./components/PsecLayout";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { useAuth } from "./_core/hooks/useAuth";
 import { LanguageProvider } from "./contexts/LanguageContext";
+import { useLanguage } from "./contexts/LanguageContext";
 
 const AdminReview = lazy(() => import("./pages/AdminReview"));
 const Home = lazy(() => import("./pages/Home"));
@@ -20,7 +21,8 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const Login = lazy(() => import("./pages/Login"));
 
 function PageLoader() {
-  return <div className="flex min-h-[45vh] items-center justify-center bg-background" role="status" aria-live="polite"><span className="font-mono text-[10px] uppercase tracking-[.18em] text-muted-foreground">Loading archive…</span></div>;
+  const { t } = useLanguage();
+  return <div className="flex min-h-[45vh] items-center justify-center bg-background" role="status" aria-live="polite"><span className="font-mono text-[10px] uppercase tracking-[.18em] text-muted-foreground">{t("loading")}</span></div>;
 }
 
 function PublicRouter() {

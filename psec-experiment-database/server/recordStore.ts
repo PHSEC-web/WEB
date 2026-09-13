@@ -437,9 +437,10 @@ async function appendRecordAttachments(input: {
     const base64 = file.data.includes(",")
       ? file.data.split(",").pop()
       : file.data;
+    const binary = Buffer.from(base64 || "", "base64");
     const stored = await storagePut(
       `psec-records/${input.recordId}/${Date.now()}-${safeName}`,
-      Buffer.from(base64 || "", "base64"),
+      binary,
       file.mimeType || "application/octet-stream"
     );
     await db.insert(attachments).values({
@@ -448,7 +449,7 @@ async function appendRecordAttachments(input: {
       fileName: file.fileName,
       storageKey: stored.key,
       mimeType: file.mimeType || "application/octet-stream",
-      sizeBytes: file.sizeBytes,
+      sizeBytes: binary.byteLength,
       kind: file.kind,
       visibility: file.kind === "data" ? "members" : "public",
       uploadedByOpenId: input.actor.openId || null,
@@ -976,9 +977,10 @@ async function storeRecordAttachmentsForRevision(input: {
     const base64 = file.data.includes(",")
       ? file.data.split(",").pop()
       : file.data;
+    const binary = Buffer.from(base64 || "", "base64");
     const stored = await storagePut(
       `psec-records/${input.recordId}/${Date.now()}-${safeName}`,
-      Buffer.from(base64 || "", "base64"),
+      binary,
       file.mimeType || "application/octet-stream"
     );
     await db.insert(attachments).values({
@@ -987,7 +989,7 @@ async function storeRecordAttachmentsForRevision(input: {
       fileName: file.fileName,
       storageKey: stored.key,
       mimeType: file.mimeType || "application/octet-stream",
-      sizeBytes: file.sizeBytes,
+      sizeBytes: binary.byteLength,
       kind: file.kind,
       visibility: file.kind === "data" ? "members" : "public",
       uploadedByOpenId: input.actor.openId || null,

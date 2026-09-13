@@ -45,6 +45,8 @@ Managed attachment objects stored by the previous cloud runtime are represented 
 4. Create a private environment configuration file from `LOCAL_ENVIRONMENT_TEMPLATE.txt` and fill in the local database URL, JWT secret, SMTP settings, private OSS configuration, and admin password list. Do **not** commit the populated file.
 5. In `psec-experiment-database/`, run `pnpm install`, then `pnpm check` and `pnpm build`. Start development with `pnpm dev`.
 
+The production server follows `main`. Keep UI work on `ui-redesign` until it has been reviewed and explicitly promoted; do not deploy this preview branch directly to production.
+
 ## Important hosting note
 
 The current application uses school-email login and DirectMail SMTP, with private Alibaba Cloud OSS for attachments. Configure the OSS bucket and migrate any pre-existing attachment objects before deploying this storage change. See `psec-experiment-database/OSS_DEPLOYMENT.md` for the checklist.

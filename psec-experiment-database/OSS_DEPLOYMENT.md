@@ -31,6 +31,20 @@ OSS_ACCESS_KEY_SECRET=RAM的AccessKeySecret
 
 轻量服务器是否能使用实例角色需要按实际产品和实例能力确认；没有确认前不假设支持。以上使用独立的最小权限 RAM 身份。
 
+### systemd 读取位置
+
+`psec-web` 应明确从应用目录加载环境文件，不要依赖 systemd 默认的工作目录。检查 `/etc/systemd/system/psec-web.service` 时，确认服务段至少包含以下路径设置（路径中不要写入密钥）：
+
+```ini
+[Service]
+User=psec
+WorkingDirectory=/home/psec/psec-web/psec-experiment-database
+EnvironmentFile=/home/psec/psec-web/psec-experiment-database/.env
+ExecStart=/usr/bin/node /home/psec/psec-web/psec-experiment-database/dist/index.js
+```
+
+如果服务使用其他 Node.js 安装路径，只调整 `ExecStart` 的可执行文件路径；仍需保留 `WorkingDirectory` 和 `EnvironmentFile`。修改 unit 后执行 `sudo systemctl daemon-reload`，再重启服务。应用也会从构建产物所在项目目录寻找 `.env` 作为兜底，但生产环境应优先使用 systemd 的 `EnvironmentFile`，这样启动目录变化不会影响配置。
+
 ## 2. 核对旧附件
 
 新上传会写入 OSS；已有数据库行只有 `storageKey`，**文件本体不会自动迁移**。在切断旧存储之前，核对数据库里的 `attachments.storageKey` 和 `submissions.attachmentKey`，以及其他上传对象是否存在。旧文件需要从原存储或本地备份取回，再以**完全相同的对象 Key** 上传至新 Bucket；不要改成公开读，也不要直接改数据库地址。
@@ -45,7 +59,7 @@ OSS_ACCESS_KEY_SECRET=RAM的AccessKeySecret
 ssh psec-server
 cd ~/psec-web/psec-experiment-database
 git status --short --branch
-git pull --ff-only origin de-manus
+git pull --ff-only origin main
 pnpm install --frozen-lockfile
 pnpm check
 pnpm test
@@ -55,6 +69,6 @@ sudo systemctl restart psec-web
 sudo systemctl status psec-web --no-pager
 ```
 
-如果服务器的当前分支不是 `de-manus`，先停止，不要在生产目录强行切换分支或覆盖未提交改动。迁移命令使用现有 `.env` 的数据库地址，执行前要确认备份已完成。
+如果服务器的当前分支不是 `main`，先停止，不要在生产目录强行切换分支或覆盖未提交改动。`ui-redesign` 只用于预览和 GitHub 协作，不能直接部署到生产目录。迁移命令使用现有 `.env` 的数据库地址，执行前要确认备份已完成。
 
 打开 `https://psec.club/`，使用普通账号上传附件并下载，再验证未登录/无权用户不能访问私有附件；管理员也要检查投稿附件。若服务启动失败，查看 `sudo journalctl -u psec-web -n 80 --no-pager`，不要把含密钥的日志直接贴到公开渠道。**GitHub 推送和生产部署是两件不同的事。**

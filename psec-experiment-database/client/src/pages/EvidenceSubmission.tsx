@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useState, type ChangeEvent, type FormEvent } from "react";
 import { Link } from "wouter";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 
 type UploadKind = "photo" | "data" | "report" | "protocol" | "other";
@@ -34,8 +35,11 @@ const kindFor = (file: File): UploadKind =>
     : /csv|excel|spreadsheet/.test(file.type)
       ? "data"
       : "report";
+const uploadKindKeys = { photo: "photoFile", data: "dataFile", report: "reportFile", protocol: "protocolFile", other: "otherFile" } as const;
+const disciplineKeys = { "Social Psychology": "socialPsychology", "Behavioral Economics": "behavioralEconomics", Sociology: "sociology", "Moral & Political Philosophy": "philosophy" } as const;
 
 export default function EvidenceSubmission() {
+  const { language, t } = useLanguage();
   const targets = trpc.experiments.completed.useQuery();
   const [submitterName, setSubmitterName] = useState("");
   const [recordId, setRecordId] = useState("");
@@ -51,7 +55,7 @@ export default function EvidenceSubmission() {
     if (!files.length) return;
     setFileError("");
     if (files.length + uploads.length > 8) {
-      setFileError("You can attach up to 8 files.");
+      setFileError(t("uploadLimit"));
       return;
     }
     const invalid = files.find(
@@ -59,7 +63,7 @@ export default function EvidenceSubmission() {
     );
     if (invalid) {
       setFileError(
-        `${invalid.name} is not a JPG, PNG, CSV, XLSX, or PDF file under 8 MB.`
+        language === "zh" ? `${invalid.name} 不是 8 MB 以内的 JPG、PNG、CSV、XLSX 或 PDF 文件。` : `${invalid.name} is not a JPG, PNG, CSV, XLSX, or PDF file under 8 MB.`
       );
       return;
     }
@@ -78,7 +82,7 @@ export default function EvidenceSubmission() {
                 kind: kindFor(file),
               });
             reader.onerror = () =>
-              reject(new Error(`Could not read ${file.name}`));
+              reject(new Error(`${t("couldNotReadFile")} ${file.name}`));
             reader.readAsDataURL(file);
           })
       )
@@ -95,12 +99,12 @@ export default function EvidenceSubmission() {
     setValidationError("");
     if (!submitterName.trim() || !recordId) {
       setValidationError(
-        "Submitter Name and a target completed experiment are required."
+        t("evidenceRequiredFields")
       );
       return;
     }
     if (preparing) {
-      setValidationError("Please wait for the files to finish preparing.");
+      setValidationError(t("pleaseWaitFiles"));
       return;
     }
     submit.mutate({
@@ -116,20 +120,19 @@ export default function EvidenceSubmission() {
         <div className="mx-auto max-w-2xl border border-[#b8ccb5] bg-[#edf5eb] p-8 text-center md:p-14">
           <CheckCircle2 className="mx-auto text-[#3f7b44]" size={36} />
           <div className="mt-5 font-mono text-[10px] uppercase tracking-[.2em] text-[#3f7b44]">
-            Evidence supplement received
+            {t("evidenceSupplementReceived")}
           </div>
           <h1 className="mt-4 font-display text-4xl tracking-[-.04em]">
-            Your evidence is awaiting review.
+            {t("evidenceAwaitingReview")}
           </h1>
           <p className="mx-auto mt-5 max-w-lg text-sm leading-7 text-muted-foreground">
-            It will not change the public experiment until an administrator
-            approves and attaches it to the selected completed project.
+            {t("evidenceReviewDescription")}
           </p>
           <Link
             href="/"
             className="focus-ring mt-8 inline-flex bg-primary px-4 py-3 font-mono text-[10px] uppercase tracking-[.14em] text-white"
           >
-            Return to overview
+            {t("returnToOverview")}
           </Link>
         </div>
       </div>
@@ -142,20 +145,18 @@ export default function EvidenceSubmission() {
             href="/"
             className="focus-ring inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[.18em] text-white/45 hover:text-signal"
           >
-            <ArrowLeft size={13} /> Back to overview
+            <ArrowLeft size={13} /> {t("backToOverview")}
           </Link>
           <div className="mt-10 font-mono text-[10px] uppercase tracking-[.2em] text-signal">
-            Completed project / Evidence supplement
+            {t("completedProjectEvidenceSupplement")}
           </div>
           <h1 className="mt-4 max-w-4xl font-display text-[clamp(2.8rem,6vw,5.8rem)] leading-[1.02] tracking-[-.06em]">
-            Add what
+            {t("addWhat")}
             <br />
-            <span className="text-[#9dc4f4]">actually happened.</span>
+            <span className="text-[#9dc4f4]">{t("actuallyHappened")}</span>
           </h1>
           <p className="mt-6 max-w-2xl text-[16px] leading-7 text-white/60">
-            Upload real-run photos, raw data, and observation notes for an
-            experiment that is already archived in Completed Experimental
-            Projects.
+            {t("evidenceHeroDescription")}
           </p>
         </div>
       </section>
@@ -167,26 +168,24 @@ export default function EvidenceSubmission() {
                 01
               </div>
               <div>
-                <h2 className="font-display text-xl">
-                  Identify the supplement
-                </h2>
+                <h2 className="font-display text-xl">{t("identifySupplement")}</h2>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  These are the only two mandatory fields.
+                  {t("mandatoryFields")}
                 </p>
               </div>
             </div>
             <div className="mt-6 grid gap-5 md:grid-cols-2">
               <label>
-                <span className="form-label">Submitter Name *</span>
+                <span className="form-label">{t("submitterName")} *</span>
                 <input
                   value={submitterName}
                   onChange={e => setSubmitterName(e.target.value)}
                   className="form-control mt-2"
-                  placeholder="e.g. Jordan Lee"
+                  placeholder={t("namePlaceholder")}
                 />
               </label>
               <label>
-                <span className="form-label">Target Archived Experiment *</span>
+                <span className="form-label">{t("targetArchivedExperiment")} *</span>
                 <select
                   value={recordId}
                   onChange={e => setRecordId(e.target.value)}
@@ -195,12 +194,12 @@ export default function EvidenceSubmission() {
                 >
                   <option value="">
                     {targets.isLoading
-                      ? "Loading completed projects…"
-                      : "Select a completed experiment"}
+                      ? t("loadingCompletedProjects")
+                      : t("selectCompletedExperiment")}
                   </option>
                   {(targets.data ?? []).map(item => (
                     <option key={item.id} value={item.id}>
-                      {item.title} · {item.discipline}
+                      {item.title} · {item.discipline in disciplineKeys ? t(disciplineKeys[item.discipline as keyof typeof disciplineKeys]) : item.discipline}
                     </option>
                   ))}
                 </select>
@@ -208,15 +207,14 @@ export default function EvidenceSubmission() {
                   !targets.error &&
                   targets.data?.length === 0 && (
                     <span className="mt-2 block text-xs text-muted-foreground">
-                      No published completed projects are available yet.
+                      {t("noPublishedCompleted")}
                     </span>
                   )}
               </label>
             </div>
             {targets.error && (
               <p className="mt-4 text-sm text-[#8a2c2c]">
-                Completed projects could not be loaded. Please refresh and try
-                again.
+                {t("completedProjectsLoadError")}
               </p>
             )}
           </section>
@@ -226,11 +224,9 @@ export default function EvidenceSubmission() {
                 02
               </div>
               <div>
-                <h2 className="font-display text-xl">
-                  Execution observation notes
-                </h2>
+                <h2 className="font-display text-xl">{t("executionObservationNotes")}</h2>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Optional qualitative notes from the real-world run.
+                  {t("optionalQualitativeNotes")}
                 </p>
               </div>
             </div>
@@ -238,7 +234,7 @@ export default function EvidenceSubmission() {
               value={observationNotes}
               onChange={e => setObservationNotes(e.target.value)}
               className="form-control mt-6 min-h-40 resize-y"
-              placeholder="What happened during the session? Note unexpected behavior, participant reactions, timing, or context..."
+              placeholder={t("observationPlaceholder")}
             />
           </section>
           <section className="border border-[#9fb0c4] bg-[#eef4f9] p-5 md:p-7">
@@ -247,22 +243,18 @@ export default function EvidenceSubmission() {
                 03
               </div>
               <div>
-                <h2 className="font-display text-xl">Session evidence</h2>
+                <h2 className="font-display text-xl">{t("sessionEvidence")}</h2>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Optional: add up to 8 files total, including multiple photos.
-                  Each file may be up to 8 MB.
+                  {t("sessionEvidenceDescription")}
                 </p>
               </div>
             </div>
             <label className="focus-ring mt-6 flex min-h-16 cursor-pointer items-center gap-3 border border-dashed border-[#7897b8] bg-white px-4 py-3 text-sm text-muted-foreground hover:border-primary hover:text-primary">
               <FileUp size={18} />
               <span>
-                <strong className="block font-medium text-ink">
-                  Add multiple photos or data files
-                </strong>
+                <strong className="block font-medium text-ink">{t("addMultiplePhotosData")}</strong>
                 <span className="text-xs">
-                  Select several files at once, or add more files again later ·
-                  JPG · PNG · CSV · XLSX · PDF
+                  {t("selectSeveralFiles")}
                 </span>
               </span>
               <input
@@ -292,7 +284,7 @@ export default function EvidenceSubmission() {
                         {file.fileName}
                       </strong>
                       <span className="font-mono text-[9px] uppercase tracking-[.12em] text-muted-foreground">
-                        {file.kind} ·{" "}
+                        {t(uploadKindKeys[file.kind])} ·{" "}
                         {(file.sizeBytes / 1024 / 1024).toFixed(2)} MB
                       </span>
                     </span>
@@ -304,7 +296,7 @@ export default function EvidenceSubmission() {
                         )
                       }
                       className="text-muted-foreground hover:text-[#8a2c2c]"
-                      aria-label={`Remove ${file.fileName}`}
+                      aria-label={`${t("removeFile")} ${file.fileName}`}
                     >
                       <Trash2 size={15} />
                     </button>
@@ -323,8 +315,7 @@ export default function EvidenceSubmission() {
           )}
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-[.12em] text-muted-foreground">
-              <ShieldCheck size={14} className="text-[#3f7b44]" /> Saved
-              privately until admin approval
+              <ShieldCheck size={14} className="text-[#3f7b44]" /> {t("savedPrivately")}
             </div>
             <button
               type="submit"
@@ -332,40 +323,39 @@ export default function EvidenceSubmission() {
               className="focus-ring flex h-12 items-center gap-2 bg-primary px-6 font-mono text-[10px] uppercase tracking-[.14em] text-white hover:bg-[#083d80]"
             >
               {preparing
-                ? "Preparing files…"
+                ? t("preparingFiles")
                 : submit.isPending
-                  ? "Sending…"
-                  : "Submit evidence"}{" "}
+                  ? t("sending")
+                  : t("submitEvidence")}{" "}
               <Send size={14} />
             </button>
           </div>
         </form>
         <aside className="h-fit border border-border bg-[#ece9e2] p-6 lg:sticky lg:top-24">
           <div className="font-mono text-[10px] uppercase tracking-[.18em] text-primary">
-            Evidence protocol
+            {t("evidenceProtocol")}
           </div>
           <div className="mt-6 space-y-5 text-sm leading-6 text-muted-foreground">
             <p>
               <strong className="font-medium text-ink">
-                This is not a new experiment.
+                {t("notNewExperiment")}
               </strong>
               <br />
-              Choose an existing completed project only.
+              {t("chooseExistingCompleted")}
             </p>
             <p>
               <strong className="font-medium text-ink">
-                Admin review first.
+                {t("adminReviewFirst")}
               </strong>
               <br />
-              Approved evidence is appended to that project's execution records.
+              {t("approvedEvidenceAppended")}
             </p>
             <p>
               <strong className="font-medium text-ink">
-                Rejected evidence stays private.
+                {t("rejectedEvidencePrivate")}
               </strong>
               <br />
-              The submission is retained for administrative history but never
-              shown publicly.
+              {t("retainedAdminHistory")}
             </p>
           </div>
         </aside>
