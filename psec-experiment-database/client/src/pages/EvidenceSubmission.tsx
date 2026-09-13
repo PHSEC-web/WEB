@@ -135,7 +135,7 @@ export default function EvidenceSubmission() {
       </div>
     );
   return (
-    <div>
+    <div className="page-evidence">
       <section className="navy-grid text-white">
         <div className="mx-auto max-w-[1440px] px-5 pb-14 pt-14 lg:px-10 lg:pb-18 lg:pt-20">
           <Link

@@ -179,7 +179,7 @@ export default function MyRecords() {
       </div>
     );
   return (
-    <div>
+    <div className="page-records">
       <section className="navy-grid text-white">
         <div className="mx-auto max-w-[1440px] px-5 pb-14 pt-14 lg:px-10 lg:pb-18 lg:pt-20">
           <div className="font-mono text-[10px] uppercase tracking-[.2em] text-signal">
