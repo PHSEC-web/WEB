@@ -7,6 +7,7 @@ import {
   evidenceSubmissions,
   executionRecords,
   experiments,
+  recordConsents,
   submissionHistory,
   submissions,
   users,
@@ -15,6 +16,7 @@ import { ENV } from "./_core/env";
 import { storagePut } from "./storage";
 import { schoolEmailOpenId } from "./emailIdentity";
 import { records } from "../drizzle/schema";
+import type { LegalConsent } from "../shared/legal";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -175,8 +177,10 @@ export async function listExecutionRecords(slug: string) {
 export async function createEvidenceSubmission(input: {
   submitterName: string;
   recordId: number;
+  ownerOpenId: string;
   observationNotes?: string;
   files?: AttachmentInput[];
+  legalConsent: LegalConsent;
 }) {
   const db = await getDb();
   if (!db) return null;
@@ -198,12 +202,19 @@ export async function createEvidenceSubmission(input: {
   if (!target) throw new Error("Choose an available completed project");
   const result = await db.insert(evidenceSubmissions).values({
     submitterName: input.submitterName.trim(),
+    ownerOpenId: input.ownerOpenId,
     experimentId: null,
     recordId: target.id,
     observationNotes: input.observationNotes?.trim() || null,
     status: "pending",
   });
   const id = Number(result[0].insertId);
+  await db.insert(recordConsents).values({
+    recordId: target.id,
+    evidenceSubmissionId: id,
+    userOpenId: input.ownerOpenId,
+    ...input.legalConsent,
+  });
   for (const file of input.files ?? []) {
     const stored = await storeAttachment(file, `psec-evidence/${id}`);
     await db.insert(attachments).values({

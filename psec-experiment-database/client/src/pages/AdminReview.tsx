@@ -407,8 +407,8 @@ export default function AdminReview() {
               submitEdit={submitEdit}
               beginEdit={beginEdit}
               history={history.data ?? []}
-              onApprove={(discipline, category) =>
-                approve.mutate({ id: item.id, discipline, category })
+              onApprove={(discipline, category, publicationReviewConfirmed) =>
+                approve.mutate({ id: item.id, discipline, category, publicationReviewConfirmed })
               }
               onReject={() =>
                 reject.mutate({ id: item.id, comment: rejectComment })
@@ -652,7 +652,7 @@ function SubmissionCard({
   submitEdit: (event: FormEvent<HTMLFormElement>) => void;
   beginEdit: (item: QueueItem) => void;
   history: HistoryItem[];
-  onApprove: (discipline: string, category: ProjectCategory) => void;
+  onApprove: (discipline: string, category: ProjectCategory, publicationReviewConfirmed: true) => void;
   onReject: () => void;
   approving: boolean;
   rejecting: boolean;
@@ -665,6 +665,7 @@ function SubmissionCard({
   const [approveFolder, setApproveFolder] = useState<ProjectCategory>(
     projectCategoryForLifecycle(item.lifecycle)
   );
+  const [publicationReviewConfirmed, setPublicationReviewConfirmed] = useState(false);
   const expanded = openId === item.id;
   const historyForItem = history.filter(
     record => record.submissionId === item.id
@@ -841,9 +842,14 @@ function SubmissionCard({
               </label>
             </div>
             <div className="flex flex-wrap gap-3">
+              <p className="w-full text-xs leading-5 text-muted-foreground">{t("adminPublicationChecklist")}</p>
+              <label className="flex w-full items-start gap-3 border border-[#c7d4e1] bg-white p-3 text-xs leading-5 text-muted-foreground">
+                <input type="checkbox" checked={publicationReviewConfirmed} onChange={event => setPublicationReviewConfirmed(event.target.checked)} className="mt-1" />
+                <span>{t("confirmPublicationReview")}</span>
+              </label>
               <button
-                onClick={() => onApprove(approveDiscipline, approveFolder)}
-                disabled={approving}
+                onClick={() => onApprove(approveDiscipline, approveFolder, true)}
+                disabled={approving || !publicationReviewConfirmed}
                 className="focus-ring flex items-center gap-2 bg-[#3f7b44] px-4 py-3 font-mono text-[10px] uppercase tracking-[.12em] text-white disabled:opacity-50"
               >
                 <Check size={14} />{" "}

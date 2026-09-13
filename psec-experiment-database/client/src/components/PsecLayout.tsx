@@ -63,6 +63,10 @@ export default function PsecLayout({ children }: { children: ReactNode }) {
           <div className="flex flex-wrap items-end justify-end gap-x-5 gap-y-3 font-mono text-[10px] tracking-[.06em] text-muted-foreground">
             <Link href="/submit" className="transition-colors hover:text-primary">{t("submissionGuidelines")} <ArrowUpRight size={12} className="ml-1 inline" /></Link>
             <Link href="/my-records" className="transition-colors hover:text-primary">{t("myRecords")} <ArrowUpRight size={12} className="ml-1 inline" /></Link>
+            <Link href="/privacy" className="transition-colors hover:text-primary">{t("privacyPolicy")}</Link>
+            <Link href="/terms" className="transition-colors hover:text-primary">{t("termsOfUse")}</Link>
+            <Link href="/research-ethics" className="transition-colors hover:text-primary">{t("researchEthics")}</Link>
+            <Link href="/content-policy" className="transition-colors hover:text-primary">{t("contentPolicy")}</Link>
             <span>{t("rights")}</span>
           </div>
         </div>

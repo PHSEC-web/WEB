@@ -1,6 +1,11 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import { attachments, recordRevisions, records } from "../drizzle/schema";
+import {
+  attachments,
+  recordConsents,
+  recordRevisions,
+  records,
+} from "../drizzle/schema";
 import {
   lifecycleForProjectCategory,
   projectCategoryForLifecycle,
@@ -8,6 +13,7 @@ import {
 } from "../shared/recordCategories";
 import { getDb } from "./db";
 import { storagePut } from "./storage";
+import type { LegalConsent } from "../shared/legal";
 
 export type RecordLifecycle = "idea" | "design" | "in_progress" | "completed";
 export type RecordStatus =
@@ -44,6 +50,7 @@ export type ProjectSubmissionInput = {
   materials?: string;
   expectedOutput?: string;
   attachments?: RecordAttachmentInput[];
+  legalConsent?: LegalConsent;
 };
 
 type RecordPatch = Partial<{
@@ -399,6 +406,15 @@ export async function createProjectRecord(
     note: "Created through the member submission form",
     createdAt: now,
   });
+  if (actor?.openId && input.legalConsent) {
+    await db.insert(recordConsents).values({
+      recordId,
+      evidenceSubmissionId: null,
+      userOpenId: actor.openId,
+      ...input.legalConsent,
+      createdAt: now,
+    });
+  }
   if (input.attachments?.length)
     await appendRecordAttachments({
       recordId,

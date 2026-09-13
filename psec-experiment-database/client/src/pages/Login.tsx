@@ -53,6 +53,7 @@ export default function Login() {
         <div className="font-mono text-[10px] uppercase tracking-[.2em] text-primary">{t("memberAccess")}</div>
         <h1 className="mt-4 max-w-xl font-display text-[clamp(2.8rem,6vw,5.8rem)] leading-[1.02] tracking-[-.06em]">{t("signInSchoolEmail")}</h1>
         <p className="mt-6 max-w-lg text-base leading-7 text-muted-foreground">{t("schoolEmailDescription")}</p>
+        <p className="mt-4 max-w-lg text-xs leading-6 text-muted-foreground">{t("legalConsentDescription")} <Link href="/privacy" className="text-primary underline">{t("privacyPolicy")}</Link> · <Link href="/terms" className="text-primary underline">{t("termsOfUse")}</Link></p>
         <div className="mt-8 flex items-center gap-3 font-mono text-[10px] uppercase tracking-[.14em] text-[#3f7b44]"><ShieldCheck size={16} /> {t("oneTimeCode")}</div>
       </div>
       <div className="border border-border bg-card p-7 md:p-9">

@@ -46,6 +46,7 @@ import { requestEmailCode, verifyEmailCode } from "./emailAuth";
 import { sdk } from "./_core/sdk";
 import { deleteRecordAsOwner } from "./recordStore";
 import { PROJECT_CATEGORIES } from "../shared/recordCategories";
+import { LEGAL_VERSIONS } from "../shared/legal";
 
 const optionalText = z.string().max(20_000).optional();
 const allowedAttachmentTypes = new Set([
@@ -192,7 +193,30 @@ const submissionFields = z.object({
   expectedOutput: z.string().max(120).optional(),
   attachments: uploadFilesSchema.optional(),
 });
-const submissionSchema = submissionFields.superRefine((value, ctx) => {
+const legalConsentSchema = z.object({
+  privacyVersion: z.literal(LEGAL_VERSIONS.privacy),
+  termsVersion: z.literal(LEGAL_VERSIONS.terms),
+  researchSafetyVersion: z.literal(LEGAL_VERSIONS.researchSafety),
+  contentRightsVersion: z.literal(LEGAL_VERSIONS.contentRights),
+});
+
+const submissionSchema = submissionFields
+  .extend({ legalConsent: legalConsentSchema })
+  .superRefine((value, ctx) => {
+    if (!value.memberName.trim())
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["memberName"],
+        message: "Submitter Name is required",
+      });
+    if (!value.abstract.trim())
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["abstract"],
+        message: "One-sentence summary is required",
+      });
+  });
+const reviewValuesSchema = submissionFields.superRefine((value, ctx) => {
   if (!value.memberName.trim())
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -206,10 +230,9 @@ const submissionSchema = submissionFields.superRefine((value, ctx) => {
       message: "One-sentence summary is required",
     });
 });
-const reviewValuesSchema = submissionSchema;
 
 function asProjectInput(
-  input: z.infer<typeof submissionSchema>
+  input: z.infer<typeof submissionFields>
 ): ProjectSubmissionInput {
   return asRecordInput(input);
 }
@@ -381,19 +404,21 @@ export const appRouter = router({
           openId: ctx.user.openId,
         })
       ),
-    evidence: publicProcedure
+    evidence: protectedProcedure
       .input(
         z.object({
           submitterName: z.string().trim().min(1).max(160),
           recordId: z.number().int().positive(),
           observationNotes: z.string().max(20_000).optional(),
           files: uploadFilesSchema.optional(),
+          legalConsent: legalConsentSchema,
         })
       )
       .mutation(({ ctx, input }) => {
         assertEvidenceRateLimit(ctx.req);
         return createEvidenceSubmission({
           ...input,
+          ownerOpenId: ctx.user.openId,
           files: input.files as AttachmentInput[] | undefined,
         });
       }),
@@ -465,6 +490,7 @@ export const appRouter = router({
           id: z.number().int().positive(),
           discipline: z.string().optional(),
           category: z.enum(PROJECT_CATEGORIES),
+          publicationReviewConfirmed: z.literal(true),
         })
       )
       .mutation(({ input }) =>

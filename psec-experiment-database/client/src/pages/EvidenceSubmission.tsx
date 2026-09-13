@@ -8,10 +8,13 @@ import {
   ShieldCheck,
   Trash2,
 } from "lucide-react";
-import { useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { Link } from "wouter";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
+import { startLogin } from "@/const";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { LEGAL_VERSIONS } from "../../../shared/legal";
 
 type UploadKind = "photo" | "data" | "report" | "protocol" | "other";
 type UploadDraft = {
@@ -40,6 +43,7 @@ const disciplineKeys = { "Social Psychology": "socialPsychology", "Behavioral Ec
 
 export default function EvidenceSubmission() {
   const { language, t } = useLanguage();
+  const { user, isAuthenticated } = useAuth();
   const targets = trpc.experiments.completed.useQuery();
   const [submitterName, setSubmitterName] = useState("");
   const [recordId, setRecordId] = useState("");
@@ -48,7 +52,17 @@ export default function EvidenceSubmission() {
   const [fileError, setFileError] = useState("");
   const [preparing, setPreparing] = useState(false);
   const [validationError, setValidationError] = useState("");
+  const [legalConfirmed, setLegalConfirmed] = useState({
+    privacy: false,
+    terms: false,
+    researchSafety: false,
+    contentRights: false,
+  });
   const submit = trpc.submissions.evidence.useMutation();
+
+  useEffect(() => {
+    if (user?.name && !submitterName) setSubmitterName(user.name);
+  }, [submitterName, user?.name]);
 
   const onFilesChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
@@ -103,6 +117,16 @@ export default function EvidenceSubmission() {
       );
       return;
     }
+    if (!isAuthenticated) {
+      setValidationError(t("signInBeforeSubmitting"));
+      localStorage.setItem("psec-after-login", "/submit-evidence");
+      startLogin();
+      return;
+    }
+    if (!Object.values(legalConfirmed).every(Boolean)) {
+      setValidationError(t("legalConsentRequired"));
+      return;
+    }
     if (preparing) {
       setValidationError(t("pleaseWaitFiles"));
       return;
@@ -112,6 +136,12 @@ export default function EvidenceSubmission() {
       recordId: Number(recordId),
       observationNotes,
       files: uploads,
+      legalConsent: {
+        privacyVersion: LEGAL_VERSIONS.privacy,
+        termsVersion: LEGAL_VERSIONS.terms,
+        researchSafetyVersion: LEGAL_VERSIONS.researchSafety,
+        contentRightsVersion: LEGAL_VERSIONS.contentRights,
+      },
     });
   };
   if (submit.isSuccess)
@@ -304,6 +334,16 @@ export default function EvidenceSubmission() {
                 ))}
               </div>
             )}
+          </section>
+          <section className="border border-[#9fb0c4] bg-[#eef4f9] p-5 md:p-7">
+            <div className="font-mono text-[10px] uppercase tracking-[.16em] text-primary">{t("legalConsentTitle")}</div>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">{t("legalConsentDescription")}</p>
+            <div className="mt-5 space-y-3 text-sm leading-6 text-ink">
+              <label className="flex items-start gap-3"><input type="checkbox" checked={legalConfirmed.privacy} onChange={event => setLegalConfirmed(current => ({ ...current, privacy: event.target.checked }))} className="mt-1" /><span>{t("acceptPrivacy")} · <Link href="/privacy" target="_blank" className="text-primary underline">{t("privacyPolicy")}</Link></span></label>
+              <label className="flex items-start gap-3"><input type="checkbox" checked={legalConfirmed.terms} onChange={event => setLegalConfirmed(current => ({ ...current, terms: event.target.checked }))} className="mt-1" /><span>{t("acceptTerms")} · <Link href="/terms" target="_blank" className="text-primary underline">{t("termsOfUse")}</Link></span></label>
+              <label className="flex items-start gap-3"><input type="checkbox" checked={legalConfirmed.researchSafety} onChange={event => setLegalConfirmed(current => ({ ...current, researchSafety: event.target.checked }))} className="mt-1" /><span>{t("acceptResearchSafety")} · <Link href="/research-ethics" target="_blank" className="text-primary underline">{t("researchEthics")}</Link></span></label>
+              <label className="flex items-start gap-3"><input type="checkbox" checked={legalConfirmed.contentRights} onChange={event => setLegalConfirmed(current => ({ ...current, contentRights: event.target.checked }))} className="mt-1" /><span>{t("acceptContentRights")} · <Link href="/content-policy" target="_blank" className="text-primary underline">{t("contentPolicy")}</Link></span></label>
+            </div>
           </section>
           {(validationError || fileError || submit.error) && (
             <div

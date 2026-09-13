@@ -19,6 +19,7 @@ const RecordDetail = lazy(() => import("./pages/RecordDetail"));
 const EvidenceSheet = lazy(() => import("./pages/EvidenceSheet"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Login = lazy(() => import("./pages/Login"));
+const Legal = lazy(() => import("./pages/Legal"));
 
 function PageLoader() {
   const { t } = useLanguage();
@@ -36,6 +37,10 @@ function PublicRouter() {
         <Route path="/library/moral-political-philosophy"><Library discipline="Moral & Political Philosophy" /></Route>
         <Route path="/submit" component={Submission} />
         <Route path="/login" component={Login} />
+        <Route path="/privacy"><Legal kind="privacy" /></Route>
+        <Route path="/terms"><Legal kind="terms" /></Route>
+        <Route path="/research-ethics"><Legal kind="research-ethics" /></Route>
+        <Route path="/content-policy"><Legal kind="content-policy" /></Route>
         <Route path="/submit-evidence" component={EvidenceSubmission} />
         <Route path="/my-records" component={MyRecords} />
         <Route path="/records/:slug/evidence" component={EvidenceSheet} />

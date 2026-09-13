@@ -243,6 +243,7 @@ export const attachments = mysqlTable(
 export const evidenceSubmissions = mysqlTable("evidenceSubmissions", {
   id: int("id").autoincrement().primaryKey(),
   submitterName: varchar("submitterName", { length: 160 }).notNull(),
+  ownerOpenId: varchar("ownerOpenId", { length: 64 }),
   experimentId: int("experimentId"),
   recordId: int("recordId"),
   observationNotes: text("observationNotes"),
@@ -253,6 +254,30 @@ export const evidenceSubmissions = mysqlTable("evidenceSubmissions", {
   submittedAt: timestamp("submittedAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
+
+/** Versioned consent records prove which notices accompanied a member submission. */
+export const recordConsents = mysqlTable(
+  "recordConsents",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    recordId: int("recordId"),
+    evidenceSubmissionId: int("evidenceSubmissionId"),
+    userOpenId: varchar("userOpenId", { length: 64 }).notNull(),
+    privacyVersion: varchar("privacyVersion", { length: 40 }).notNull(),
+    termsVersion: varchar("termsVersion", { length: 40 }).notNull(),
+    researchSafetyVersion: varchar("researchSafetyVersion", { length: 40 }).notNull(),
+    contentRightsVersion: varchar("contentRightsVersion", { length: 40 }).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => ({
+    recordIdx: index("record_consents_record_idx").on(table.recordId, table.createdAt),
+    evidenceIdx: index("record_consents_evidence_idx").on(
+      table.evidenceSubmissionId,
+      table.createdAt,
+    ),
+    userIdx: index("record_consents_user_idx").on(table.userOpenId, table.createdAt),
+  }),
+);
 
 export const executionRecords = mysqlTable(
   "executionRecords",
@@ -287,3 +312,4 @@ export type RecordRevision = typeof recordRevisions.$inferSelect;
 export type Attachment = typeof attachments.$inferSelect;
 export type EvidenceSubmission = typeof evidenceSubmissions.$inferSelect;
 export type ExecutionRecord = typeof executionRecords.$inferSelect;
+export type RecordConsent = typeof recordConsents.$inferSelect;

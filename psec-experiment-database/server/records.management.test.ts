@@ -7,6 +7,14 @@ import {
   lifecycleForProjectCategory,
   projectCategoryForLifecycle,
 } from "../shared/recordCategories";
+import { LEGAL_VERSIONS } from "../shared/legal";
+
+const legalConsent = {
+  privacyVersion: LEGAL_VERSIONS.privacy,
+  termsVersion: LEGAL_VERSIONS.terms,
+  researchSafetyVersion: LEGAL_VERSIONS.researchSafety,
+  contentRightsVersion: LEGAL_VERSIONS.contentRights,
+};
 
 vi.mock("./db", async importOriginal => ({
   ...(await importOriginal<typeof import("./db")>()),
@@ -127,6 +135,7 @@ describe("member project management", () => {
         memberName: "Member",
         title: "Research idea",
         abstract: "A question worth investigating.",
+        legalConsent,
       })
     ).resolves.toMatchObject({ id: 7 });
     expect(inserts[0]).toMatchObject({
@@ -143,6 +152,7 @@ describe("member project management", () => {
         memberName: "Member",
         title: "Oversized upload",
         abstract: "A valid summary.",
+        legalConsent,
         attachments: [
           {
             fileName: "large.pdf",
