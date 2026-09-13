@@ -24,8 +24,8 @@ export default function PsecLayout({ children }: { children: ReactNode }) {
           <Link href="/" className="focus-ring group flex shrink-0 items-center gap-3" onClick={() => setMobileOpen(false)}>
             <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/25 bg-white/10 text-signal transition-colors group-hover:bg-signal group-hover:text-ink"><BookOpen size={17} strokeWidth={1.8} /></span>
             <span className="hidden sm:block">
-              <span className="block font-mono text-[10px] uppercase tracking-[.22em] text-white/55">PSEC / Archive 01</span>
-              <span className="block text-[15px] font-semibold tracking-tight">Social Experiment Database</span>
+              <span className="block font-mono text-[10px] uppercase tracking-[.22em] text-white/55">PSEC / {t("brandArchive")}</span>
+              <span className="block text-[15px] font-semibold tracking-tight">{t("brandTitle")}</span>
             </span>
           </Link>
           <nav className="hidden items-center gap-1 xl:flex" aria-label="Primary navigation">
@@ -58,13 +58,12 @@ export default function PsecLayout({ children }: { children: ReactNode }) {
         <div className="mx-auto grid max-w-[1440px] gap-10 px-5 py-10 md:grid-cols-[1fr_auto] md:items-end lg:px-10">
           <div>
             <div className="flex items-center gap-2 text-xs text-[#0b4ea2]"><span className="h-2 w-2 bg-signal" /> PSEC {t("archive")}</div>
-            <p className="mt-4 max-w-lg text-sm leading-6 text-muted-foreground">A shared research memory for experiments, thought frameworks, and next questions. Built for careful iteration by PSEC members.</p>
+            <p className="mt-4 max-w-lg text-sm leading-6 text-muted-foreground">{t("footerDescription")}</p>
           </div>
           <div className="flex flex-wrap items-end justify-end gap-x-5 gap-y-3 font-mono text-[10px] uppercase tracking-[.14em] text-muted-foreground">
             <Link href="/submit" className="transition-colors hover:text-primary">{t("submissionGuidelines")} <ArrowUpRight size={12} className="ml-1 inline" /></Link>
             <Link href="/my-records" className="transition-colors hover:text-primary">{t("myRecords")} <ArrowUpRight size={12} className="ml-1 inline" /></Link>
-            <span>All rights reserved · 2026</span>
-            <Link href="/psec-admin-review-queue" aria-label={t("adminAccess")} className="fixed bottom-5 right-5 z-50 border border-white/25 bg-[#0b4ea2]/90 px-4 py-2.5 text-xs font-semibold text-white shadow-lg transition-all hover:bg-[#083d80] hover:shadow-xl active:scale-95">{t("adminAccess")}</Link>
+            <span>{t("rights")}</span>
           </div>
         </div>
       </footer>
