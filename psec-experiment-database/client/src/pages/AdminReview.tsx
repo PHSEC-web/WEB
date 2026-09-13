@@ -10,11 +10,16 @@ import {
   LogOut,
   RotateCcw,
   Search,
-  ShieldAlert,
   X,
 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { Link } from "wouter";
+import {
+  EmptyState,
+  LoadingState,
+  PageHero,
+  StatusBanner,
+} from "@/components/PsecPrimitives";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import {
@@ -133,7 +138,7 @@ export default function AdminReview() {
         void utils.admin.status.invalidate();
       } else setLoginError(t("passwordNotRecognized"));
     },
-    onError: error => setLoginError(error.message),
+    onError: () => setLoginError(t("passwordNotRecognized")),
   });
   const logout = trpc.admin.logout.useMutation({
     onSuccess: () => window.location.assign("/"),
@@ -212,7 +217,7 @@ export default function AdminReview() {
   if (status.isLoading) {
     return (
       <div
-        className="flex min-h-screen items-center justify-center bg-[#f5f2eb]"
+        className="page-admin flex min-h-[60vh] items-center justify-center px-5"
         role="status"
       >
         <span className="font-mono text-[10px] uppercase tracking-[.18em] text-muted-foreground">
@@ -224,10 +229,10 @@ export default function AdminReview() {
 
   if (!status.data?.authenticated) {
     return (
-      <div className="min-h-[calc(100vh-74px)] bg-[#f5f2eb] px-5 py-16 lg:px-10 lg:py-24">
-        <div className="mx-auto max-w-md border border-border bg-card p-8 md:p-10">
-          <div className="flex h-11 w-11 items-center justify-center bg-[#e7eef6] text-primary">
-            <LockKeyhole size={20} />
+      <div className="page-admin min-h-[60vh] px-5 py-16 lg:px-10 lg:py-24">
+        <div className="surface-card mx-auto max-w-md p-6 md:p-8">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-secondary text-primary">
+            <LockKeyhole size={20} aria-hidden="true" />
           </div>
           <div className="mt-8 font-mono text-[10px] uppercase tracking-[.2em] text-primary">
             {t("adminRestrictedRoute")}
@@ -239,29 +244,32 @@ export default function AdminReview() {
             {t("adminLoginDescription")}
           </p>
           <form onSubmit={submitPassword} className="mt-7">
-            <label className="font-mono text-[10px] uppercase tracking-[.14em] text-ink">
-              {t("adminPassword")}
+            <label className="block text-sm font-medium text-ink">
+              <span>{t("adminPassword")}</span>
               <input
                 autoFocus
                 type="password"
                 value={password}
                 onChange={event => setPassword(event.target.value)}
+                autoComplete="current-password"
                 className="form-control mt-2"
                 placeholder={t("enterPassword")}
               />
             </label>
             {loginError && (
-              <div className="mt-3 flex items-center gap-2 text-sm text-[#8a2c2c]">
-                <ShieldAlert size={15} /> {loginError}
+              <div className="mt-4">
+                <StatusBanner tone="error">
+                  <span className="break-words">{loginError}</span>
+                </StatusBanner>
               </div>
             )}
             <button
               type="submit"
               disabled={login.isPending}
-              className="focus-ring mt-5 flex h-11 w-full items-center justify-center gap-2 bg-primary font-mono text-[10px] uppercase tracking-[.14em] text-white hover:bg-[#083d80]"
+              className="focus-ring mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary font-mono text-[10px] uppercase tracking-[.14em] text-white transition-transform active:scale-[.98] disabled:opacity-60"
             >
               {login.isPending ? t("checking") : t("openQueue")} {" "}
-              <LockKeyhole size={14} />
+              <LockKeyhole size={14} aria-hidden="true" />
             </button>
           </form>
           <Link
@@ -277,43 +285,37 @@ export default function AdminReview() {
 
   const items = (queue.data ?? []) as QueueItem[];
   return (
-    <div className="min-h-screen bg-[#f5f2eb]">
-      <section className="navy-grid text-white">
-        <div className="mx-auto max-w-[1440px] px-5 pb-12 pt-12 lg:flex lg:items-end lg:justify-between lg:px-10 lg:pb-16 lg:pt-16">
-          <div>
-            <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[.2em] text-signal">
-              <span className="h-px w-8 bg-signal" /> {t("restrictedWorkspace")}
-            </div>
-            <h1 className="mt-4 font-display text-[clamp(2.7rem,5vw,5rem)] leading-[1.02] tracking-[-.06em]">
-              {t("adminReviewQueue")}
-            </h1>
-            <p className="mt-5 max-w-2xl text-sm leading-6 text-white/60">
-              {t("adminQueueDescription")}
-            </p>
-          </div>
+    <div className="page-admin min-h-screen">
+      <PageHero
+        compact
+        eyebrow={t("restrictedWorkspace")}
+        title={t("adminReviewQueue")}
+        description={t("adminQueueDescription")}
+        aside={
           <button
             onClick={() => logout.mutate()}
-            className="focus-ring mt-8 flex items-center gap-2 border border-white/20 px-4 py-3 font-mono text-[10px] uppercase tracking-[.15em] text-white/75 hover:border-signal hover:text-signal lg:mt-0"
+            className="focus-ring flex items-center gap-2 rounded-full border border-white/20 px-4 py-3 font-mono text-[10px] uppercase tracking-[.15em] text-white/75 transition-colors hover:border-signal hover:text-signal"
           >
-            <LogOut size={14} /> {t("logout")}
+            <LogOut size={14} aria-hidden="true" /> {t("logout")}
           </button>
-        </div>
-      </section>
-      <main className="mx-auto max-w-[1440px] px-5 py-10 lg:px-10 lg:py-14">
+        }
+      />
+      <div className="page-container py-10 lg:py-14">
         <ExperimentAdminPanel />
         <EvidenceQueue />
         {notice && (
-          <div
-            role={isErrorNotice(notice, t("errorPrefix")) ? "alert" : "status"}
-            className={`mb-6 flex items-center justify-between gap-4 border px-4 py-3 text-sm ${isErrorNotice(notice, t("errorPrefix")) ? "border-[#d9a7a7] bg-[#fff1f1] text-[#8a2c2c]" : "border-[#b8ccb5] bg-[#edf5eb] text-[#3f7b44]"}`}
-          >
-            <span>{notice}</span>
-            <button onClick={() => setNotice("")} aria-label={t("dismissNotice")}>
-              <X size={15} />
+          <div className="mb-6 flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <StatusBanner tone={isErrorNotice(notice, t("errorPrefix")) ? "error" : "success"}>
+                <span className="break-words">{notice}</span>
+              </StatusBanner>
+            </div>
+            <button className="focus-ring mt-2 shrink-0 rounded-full p-1 text-muted-foreground hover:text-primary" onClick={() => setNotice("")} aria-label={t("dismissNotice")}>
+              <X size={15} aria-hidden="true" />
             </button>
           </div>
         )}
-        <section className="border border-border bg-card p-5 md:p-6">
+        <section className="surface-card p-5 md:p-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <div className="font-mono text-[10px] uppercase tracking-[.18em] text-primary">
@@ -365,7 +367,7 @@ export default function AdminReview() {
                 setFromFilter("");
                 setToFilter("");
               }}
-              className="focus-ring self-end border border-border bg-white px-4 py-3 font-mono text-[10px] uppercase tracking-[.13em] text-muted-foreground hover:text-primary"
+              className="focus-ring self-end rounded-full border border-border bg-white/80 px-4 py-3 font-mono text-[10px] uppercase tracking-[.13em] text-muted-foreground transition-colors hover:text-primary"
             >
               <RotateCcw size={13} className="mr-1 inline" /> {t("reset")}
             </button>
@@ -373,20 +375,14 @@ export default function AdminReview() {
         </section>
         <section className="mt-7 space-y-5">
           {queue.isLoading && (
-            <div className="border border-border bg-card p-8 font-mono text-[10px] uppercase tracking-[.15em] text-muted-foreground">
-              {t("loadingPendingSubmissions")}
-            </div>
+            <LoadingState label={t("loadingPendingSubmissions")} />
           )}
           {!queue.isLoading && items.length === 0 && (
-            <div className="border border-dashed border-[#aeb9c8] bg-[#f0f4f8] p-12 text-center">
-              <Search className="mx-auto text-primary" size={22} />
-              <p className="mt-4 font-display text-xl">
-                {t("nothingWaitingQueue")}
-              </p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {t("newSubmissionsAppear")}
-              </p>
-            </div>
+            <EmptyState
+              title={t("nothingWaitingQueue")}
+              description={t("newSubmissionsAppear")}
+              icon={<Search size={22} />}
+            />
           )}
           {items.map(item => (
             <SubmissionCard
@@ -419,7 +415,7 @@ export default function AdminReview() {
             />
           ))}
         </section>
-      </main>
+      </div>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import { TRPCError } from "@trpc/server";
 import {
   InsertUser,
   attachments,
@@ -200,14 +201,26 @@ export async function createEvidenceSubmission(input: {
       .limit(1)
   )[0];
   if (!target) throw new Error("Choose an available completed project");
-  const result = await db.insert(evidenceSubmissions).values({
-    submitterName: input.submitterName.trim(),
-    ownerOpenId: input.ownerOpenId,
-    experimentId: null,
-    recordId: target.id,
-    observationNotes: input.observationNotes?.trim() || null,
-    status: "pending",
-  });
+  let result;
+  try {
+    result = await db.insert(evidenceSubmissions).values({
+      submitterName: input.submitterName.trim(),
+      ownerOpenId: input.ownerOpenId,
+      experimentId: null,
+      recordId: target.id,
+      observationNotes: input.observationNotes?.trim() || null,
+      status: "pending",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/evidenceSubmissions|recordId|experimentId|cannot be null|doesn't have a default value|unknown column/i.test(message)) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Evidence uploads need a database migration. Ask the administrator to run pnpm run db:repair-evidence, then restart the server.",
+      });
+    }
+    throw error;
+  }
   const id = Number(result[0].insertId);
   await db.insert(recordConsents).values({
     recordId: target.id,

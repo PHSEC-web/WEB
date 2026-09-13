@@ -1,20 +1,25 @@
-import { BookOpen, ChevronDown, Database, Download, FileText, Filter, History, Image as ImageIcon, Search, SlidersHorizontal } from "lucide-react";
+import { ArrowUpRight, BookOpen, ChevronDown, Database, Download, FileText, Filter, History, Image as ImageIcon, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { type Discipline } from "@shared/classicExperiments";
+import { EmptyState, LoadingState, PageHero, SectionHeader, StatusBanner } from "@/components/PsecPrimitives";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 
 type LibraryProps = { discipline: Discipline };
 
-const libraryViews = [{ id: "reference", key: "academicReferences" }, { id: "project", key: "clubProjects" }] as const;
-const lifecycleOptions = [{ id: "", key: "allStages" }, { id: "idea", key: "ideaStage" }, { id: "design", key: "designStage" }, { id: "in_progress", key: "inProgressStage" }, { id: "completed", key: "completedStage" }] as const;
+const disciplineRoutes: Record<Discipline, string> = {
+  "Social Psychology": "/library/social-psychology",
+  "Behavioral Economics": "/library/behavioral-economics",
+  Sociology: "/library/sociology",
+  "Moral & Political Philosophy": "/library/moral-political-philosophy",
+};
 
 const metadata: Record<Discipline, { number: string; eyebrowKey: "librarySocialEyebrow" | "libraryBehavioralEyebrow" | "librarySociologyEyebrow" | "libraryPhilosophyEyebrow"; descriptionKey: "librarySocialDescription" | "libraryBehavioralDescription" | "librarySociologyDescription" | "libraryPhilosophyDescription"; accent: string }> = {
-  "Social Psychology": { number: "02", eyebrowKey: "librarySocialEyebrow", descriptionKey: "librarySocialDescription", accent: "#dce8f5" },
-  "Behavioral Economics": { number: "03", eyebrowKey: "libraryBehavioralEyebrow", descriptionKey: "libraryBehavioralDescription", accent: "#f3ebd1" },
-  Sociology: { number: "04", eyebrowKey: "librarySociologyEyebrow", descriptionKey: "librarySociologyDescription", accent: "#e5eee4" },
-  "Moral & Political Philosophy": { number: "05", eyebrowKey: "libraryPhilosophyEyebrow", descriptionKey: "libraryPhilosophyDescription", accent: "#eee3ef" },
+  "Social Psychology": { number: "01", eyebrowKey: "librarySocialEyebrow", descriptionKey: "librarySocialDescription", accent: "#dce8f5" },
+  "Behavioral Economics": { number: "02", eyebrowKey: "libraryBehavioralEyebrow", descriptionKey: "libraryBehavioralDescription", accent: "#f3ebd1" },
+  Sociology: { number: "03", eyebrowKey: "librarySociologyEyebrow", descriptionKey: "librarySociologyDescription", accent: "#e5eee4" },
+  "Moral & Political Philosophy": { number: "04", eyebrowKey: "libraryPhilosophyEyebrow", descriptionKey: "libraryPhilosophyDescription", accent: "#eee3ef" },
 };
 
 const disciplineKeys: Record<Discipline, "socialPsychology" | "behavioralEconomics" | "sociology" | "philosophy"> = {
@@ -24,51 +29,151 @@ const disciplineKeys: Record<Discipline, "socialPsychology" | "behavioralEconomi
   "Moral & Political Philosophy": "philosophy",
 };
 
+const libraryViews = [{ id: "reference", key: "academicReferences" }, { id: "project", key: "clubProjects" }] as const;
+const lifecycleOptions = [{ id: "", key: "allStages" }, { id: "idea", key: "ideaStage" }, { id: "design", key: "designStage" }, { id: "in_progress", key: "inProgressStage" }, { id: "completed", key: "completedStage" }] as const;
 const lifecycleKeys = { idea: "ideaStage", design: "designStage", in_progress: "inProgressStage", completed: "completedStage" } as const;
 const fileKindKeys = { photo: "photoFile", data: "dataFile", report: "reportFile", protocol: "protocolFile", other: "otherFile" } as const;
 
+function updateQuery(next: { view: "reference" | "project"; stage: string; query: string }) {
+  const params = new URLSearchParams(window.location.search);
+  params.set("view", next.view);
+  next.stage ? params.set("stage", next.stage) : params.delete("stage");
+  next.query ? params.set("q", next.query) : params.delete("q");
+  window.history.replaceState(null, "", window.location.pathname + "?" + params.toString() + window.location.hash);
+}
+
+function displayDate(value: unknown, language: "zh" | "en") {
+  if (!value) return "";
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", { year: "numeric", month: "short", day: "numeric" }).format(date);
+}
+
 export default function Library({ discipline }: LibraryProps) {
-  const { t } = useLanguage();
-  const [activeView, setActiveView] = useState<"reference" | "project">(() => new URLSearchParams(window.location.search).get("view") === "project" ? "project" : "reference");
-  const [lifecycleFilter, setLifecycleFilter] = useState<"" | "idea" | "design" | "in_progress" | "completed">("");
-  const [query, setQuery] = useState("");
+  const { language, t } = useLanguage();
+  const params = new URLSearchParams(window.location.search);
+  const [activeView, setActiveView] = useState<"reference" | "project">(params.get("view") === "project" ? "project" : "reference");
+  const [lifecycleFilter, setLifecycleFilter] = useState<"" | "idea" | "design" | "in_progress" | "completed">((params.get("stage") as "" | "idea" | "design" | "in_progress" | "completed") || "");
+  const [query, setQuery] = useState(params.get("q") || "");
   const [expanded, setExpanded] = useState<string | null>(null);
   const { data, isLoading, error } = trpc.experiments.list.useQuery();
+  const current = metadata[discipline];
   const expandedAttachmentSlug = activeView === "project" ? expanded : null;
   const attachmentInput = useMemo(() => ({ slug: expandedAttachmentSlug || "" }), [expandedAttachmentSlug]);
   const attachments = trpc.experiments.attachments.useQuery(attachmentInput, { enabled: Boolean(expandedAttachmentSlug) });
   const executionRecords = trpc.experiments.executionRecords.useQuery(attachmentInput, { enabled: Boolean(expandedAttachmentSlug) });
-  const current = metadata[discipline];
-  const displayDiscipline = t(disciplineKeys[discipline]);
-  const displayLifecycle = (value?: string | null) => value && value in lifecycleKeys ? t(lifecycleKeys[value as keyof typeof lifecycleKeys]) : value || t("projectLabel");
-  const displayFileKind = (value?: string | null) => value && value in fileKindKeys ? t(fileKindKeys[value as keyof typeof fileKindKeys]) : value || t("fileLabel");
-  const records = useMemo(() => (data ?? []).filter((item) => {
-    const inDiscipline = item.discipline === discipline;
-    const inView = item.recordKind === activeView;
-    const inLifecycle = !lifecycleFilter || item.lifecycle === lifecycleFilter;
-    const searchable = [item.title, item.abstract, item.theoreticalBasis, item.historicalBackground, item.authorName].join(" ").toLowerCase();
-    return inDiscipline && inView && inLifecycle && searchable.includes(query.trim().toLowerCase());
+  const records = useMemo(() => (data ?? []).filter(item => {
+    const searchable = [item.title, item.abstract, item.theoreticalBasis, item.historicalBackground, item.hypothesis, item.procedure, item.authorName].join(" ").toLowerCase();
+    return item.discipline === discipline && item.recordKind === activeView && (!lifecycleFilter || item.lifecycle === lifecycleFilter) && searchable.includes(query.trim().toLowerCase());
   }), [activeView, data, discipline, lifecycleFilter, query]);
 
   useEffect(() => {
     const slug = decodeURIComponent(window.location.hash.slice(1));
-    if (!slug || !records.some((item) => item.slug === slug)) return;
-    setExpanded(slug);
-    window.setTimeout(() => document.getElementById(slug)?.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
-  }, [activeView, records]);
+    if (slug && records.some(item => item.slug === slug)) setExpanded(slug);
+  }, [records]);
+
+  const changeView = (view: "reference" | "project") => {
+    setActiveView(view);
+    setLifecycleFilter("");
+    updateQuery({ view, stage: "", query });
+  };
+
+  const changeStage = (stage: "" | "idea" | "design" | "in_progress" | "completed") => {
+    setLifecycleFilter(stage);
+    updateQuery({ view: activeView, stage, query });
+  };
+
+  const changeQuery = (value: string) => {
+    setQuery(value);
+    updateQuery({ view: activeView, stage: lifecycleFilter, query: value });
+  };
 
   return (
     <div className="page-library">
-      <section className="navy-grid text-white"><div className="mx-auto grid max-w-[1440px] gap-10 px-5 pb-16 pt-14 lg:grid-cols-[1fr_auto] lg:items-end lg:px-10 lg:pb-20 lg:pt-20"><div><Link href="/" className="font-mono text-[10px] uppercase tracking-[.18em] text-white/45 hover:text-signal">← {t("backToOverview")}</Link><div className="mt-10 flex items-center gap-3 font-mono text-[10px] uppercase tracking-[.2em] text-signal"><span className="h-px w-8 bg-signal" /> {t(current.eyebrowKey)} / {current.number}</div><h1 className="mt-4 max-w-4xl font-display text-[clamp(2.7rem,6vw,5.8rem)] leading-[1.02] tracking-[-.06em]">{displayDiscipline}</h1><p className="mt-6 max-w-2xl text-[16px] leading-7 text-white/60">{t(current.descriptionKey)}</p></div><div className="border border-white/15 bg-white/5 p-5 lg:w-64"><div className="font-mono text-[10px] uppercase tracking-[.18em] text-white/45">{t("archiveIndex")}</div><div className="mt-3 font-display text-5xl text-white">{String(records.length).padStart(2, "0")}</div><div className="mt-1 text-xs text-white/45">{t("curatedRecordsInView")}</div><div className="mt-5 border-t border-white/10 pt-4 font-mono text-[9px] uppercase tracking-[.14em] text-[#a9d3a2]">{t("allRecordsTheoryOrigin")}</div></div></div></section>
+      <PageHero
+        backHref="/"
+        backLabel={t("backToOverview")}
+        eyebrow={t(current.eyebrowKey) + " · " + current.number}
+        title={t(disciplineKeys[discipline])}
+        description={t(current.descriptionKey)}
+        aside={<div className="glass-panel-dark min-w-48 p-5 text-white"><div className="meta-label text-signal">{t("archiveIndex")}</div><div className="mt-2 font-display text-4xl">{records.length}</div><div className="mt-1 text-sm text-white/58">{t("curatedRecordsInView")}</div></div>}
+      />
 
-      <section className="border-b border-border bg-[#ece9e2]"><div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-2 px-5 py-3 lg:px-10"><div className="mr-2 flex items-center gap-2 font-mono text-[9px] uppercase tracking-[.16em] text-muted-foreground"><Filter size={13} /> {t("archiveView")}</div>{libraryViews.map((view) => <button key={view.id} onClick={() => { setActiveView(view.id); setLifecycleFilter(""); }} className={`focus-ring px-3 py-2 font-mono text-[9px] uppercase tracking-[.1em] transition-colors ${activeView === view.id ? "bg-primary text-white" : "bg-transparent text-muted-foreground hover:bg-white hover:text-ink"}`}>{t(view.key)}</button>)}{activeView === "project" && <><span className="mx-1 hidden h-5 w-px bg-[#c9c3b8] sm:block" />{lifecycleOptions.map((option) => <button key={option.id || "all"} onClick={() => setLifecycleFilter(option.id)} className={`focus-ring px-3 py-2 font-mono text-[9px] uppercase tracking-[.1em] transition-colors ${lifecycleFilter === option.id ? "bg-[#dce8f5] text-primary" : "bg-transparent text-muted-foreground hover:bg-white hover:text-ink"}`}>{t(option.key)}</button>)}</>}</div></section>
+      <nav className="border-b border-border bg-white/65" aria-label={t("archive")}>
+        <div className="page-container flex gap-1 overflow-x-auto py-3">
+          {(Object.keys(disciplineRoutes) as Discipline[]).map(item => <Link key={item} href={disciplineRoutes[item]} className={"focus-ring shrink-0 rounded-full px-4 py-2 text-sm transition-colors " + (item === discipline ? "bg-primary text-white" : "text-muted-foreground hover:bg-secondary hover:text-ink")}>{t(disciplineKeys[item])}</Link>)}
+        </div>
+      </nav>
 
-      <section className="mx-auto max-w-[1440px] px-5 py-12 lg:px-10 lg:py-16"><div className="flex flex-col justify-between gap-5 border-b border-border pb-8 md:flex-row md:items-end"><div><div className="font-mono text-[10px] uppercase tracking-[.2em] text-primary">{activeView === "reference" ? t("academicReferences") : t("clubProjects")}</div><h2 className="mt-3 font-display text-3xl tracking-[-.04em]">{t("recordStartingPoint")}</h2></div><div className="relative w-full md:max-w-xs"><Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-primary" /><input className="focus-ring h-11 w-full border border-border bg-white pl-10 pr-3 text-sm outline-none placeholder:text-muted-foreground/70" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("filterLibrary")} /></div></div>
-
-        <div className="mt-8 grid gap-5 lg:grid-cols-2">{isLoading && records.length === 0 && <div className="col-span-full border border-border bg-card p-8 font-mono text-[10px] uppercase tracking-[.15em] text-muted-foreground" role="status">{t("loadingArchiveRecords")}</div>}{error && <div className="col-span-full border border-[#d9a7a7] bg-[#fff1f1] p-5 text-sm text-[#8a2c2c]" role="alert">{t("archiveRefreshError")}</div>}{!isLoading && records.length === 0 && <div className="col-span-full border border-dashed border-[#aeb9c8] bg-[#f0f4f8] p-10 text-center"><SlidersHorizontal className="mx-auto text-primary" size={22} /><p className="mt-4 font-display text-xl">{t("noRecordsMatchFilter")}</p><p className="mt-2 text-sm text-muted-foreground">{t("tryAnotherFilter")}</p></div>}{records.map((item, index) => { const itemSlug = item.slug; const isExpanded = expanded === itemSlug; return <article id={itemSlug} key={itemSlug} className={`card-lift scroll-mt-24 border border-border bg-card ${isExpanded ? "lg:col-span-2" : ""}`}><button aria-expanded={isExpanded} aria-controls={`${itemSlug}-details`} onClick={() => setExpanded(isExpanded ? null : itemSlug)} className="focus-ring flex w-full items-start gap-4 p-5 text-left md:p-6"><span className="flex h-9 w-9 shrink-0 items-center justify-center bg-[#e7eef6] font-mono text-[10px] text-primary">{String(index + 1).padStart(2, "0")}</span><span className="min-w-0 flex-1"><span className="flex flex-wrap items-center gap-2 font-mono text-[9px] uppercase tracking-[.13em] text-primary"><span>{item.recordKind === "reference" ? t("referenceLabel") : displayLifecycle(item.lifecycle)}</span><span className="h-1 w-1 rounded-full bg-signal" /><span>{item.authorName || t("psecMember")}</span><span className="h-1 w-1 rounded-full bg-signal" /><span>{item.attachmentCount || 0} {item.attachmentCount === 1 ? t("publicFile") : t("publicFiles")}</span></span><span className="mt-3 block font-display text-[22px] leading-8 tracking-[-.03em] text-ink">{item.title}</span><span className="mt-2 block max-w-2xl text-sm leading-6 text-muted-foreground">{item.abstract || item.theoreticalBasis || t("notRecordedEntry")}</span></span><ChevronDown size={18} className={`mt-1 shrink-0 text-muted-foreground transition-transform ${isExpanded ? "rotate-180 text-primary" : ""}`} /></button>{isExpanded && <div id={`${itemSlug}-details`} className="grid gap-7 border-t border-border bg-[#f7f5ef] p-5 md:grid-cols-2 md:p-7 lg:grid-cols-[.92fr_1.08fr]"><div><div className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-[.16em] text-primary"><BookOpen size={13} /> {t("theoreticalBasis")}</div><p className="mt-3 text-sm leading-7 text-ink">{item.theoreticalBasis}</p><div className="mt-7 flex items-center gap-2 font-mono text-[9px] uppercase tracking-[.16em] text-primary"><History size={13} /> {t("creatorHistory")}</div><p className="mt-3 text-sm leading-7 text-muted-foreground">{item.historicalBackground}</p></div><div className="border-l-0 border-[#d9d7d1] md:border-l md:pl-7"><div className="font-mono text-[9px] uppercase tracking-[.16em] text-primary">{t("researchHypothesis")}</div><p className="mt-3 text-sm leading-7 text-ink">{item.hypothesis || t("notRecordedEntry")}</p><div className="mt-7 flex items-center gap-2 font-mono text-[9px] uppercase tracking-[.16em] text-primary"><FileText size={13} /> {t("procedureDataRecord")}</div><p className="mt-3 text-sm leading-7 text-muted-foreground">{item.procedure || t("noProcedureRecord")}</p>{activeView === "project" && item.lifecycle === "completed" && <div className="mt-7 border-t border-[#d9d7d1] pt-5"><div className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-[.16em] text-primary"><ImageIcon size={13} /> {t("experimentalEvidence")}</div>{attachments.isLoading && <p className="mt-3 text-xs text-muted-foreground">{t("loadingPhotosData")}</p>}{!attachments.isLoading && (attachments.data ?? []).length === 0 && <p className="mt-3 text-xs leading-5 text-muted-foreground">{t("noPublicEvidence")}</p>}{(attachments.data ?? []).length > 0 && <div className="mt-3 grid gap-3 sm:grid-cols-2">{(attachments.data ?? []).map((file) => <a key={file.id} href={file.url} target="_blank" rel="noreferrer" className="group border border-[#d9d7d1] bg-white p-3 hover:border-primary">{file.mimeType.startsWith("image/") ? <img src={file.url} alt={file.fileName} className="mb-3 aspect-[4/3] w-full object-cover" /> : <div className="mb-3 flex aspect-[4/3] items-center justify-center bg-[#e7eef6] text-primary"><Database size={28} /></div>}<div className="flex items-center gap-2"><Download size={13} className="shrink-0 text-primary" /><span className="truncate text-xs text-ink group-hover:text-primary">{file.fileName}</span></div><div className="mt-1 font-mono text-[9px] uppercase tracking-[.12em] text-muted-foreground">{displayFileKind(file.kind)} · {file.sizeBytes ? `${(file.sizeBytes / 1024 / 1024).toFixed(2)} MB` : t("fileLabel")}</div></a>)}</div>}</div>}{activeView === "project" && item.lifecycle === "completed" && <div className="mt-7 border-t border-[#d9d7d1] pt-5"><div className="font-mono text-[9px] uppercase tracking-[.16em] text-primary">{t("executionRecords")}</div>{(executionRecords.data ?? []).length === 0 ? <p className="mt-3 text-xs leading-5 text-muted-foreground">{t("noExecutionSupplements")}</p> : <div className="mt-3 space-y-3">{(executionRecords.data ?? []).map((record) => <div key={record.id} className="border border-[#d9d7d1] bg-white p-3"><div className="flex flex-wrap justify-between gap-2 font-mono text-[9px] uppercase tracking-[.12em] text-primary"><span>{t("runRecord")} · {record.submitterName || t("submitter")}</span><span>{new Date(record.createdAt).toLocaleString()}</span></div>{record.observationNotes && <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{record.observationNotes}</p>}{record.attachments.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{record.attachments.map((file) => <a key={file.id} href={file.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 border border-[#d9d7d1] px-2 py-1 text-xs text-primary underline"><Download size={12} /> {file.fileName}</a>)}</div>}</div>)}</div>}</div>}<div className="mt-7 flex flex-wrap items-center justify-between gap-3 border-t border-[#d9d7d1] pt-4"><span className="font-mono text-[9px] uppercase tracking-[.14em] text-muted-foreground">{t("archivedRecordHistory")}</span><Link href={`/records/${item.slug}`} className="focus-ring font-mono text-[9px] uppercase tracking-[.14em] text-primary hover:underline">{t("openShareableRecord")}</Link></div></div></div>}</article>; })}</div>
+      <section className="border-b border-border bg-white/55">
+        <div className="page-container flex flex-wrap items-center gap-2 py-3">
+          <span className="mr-1 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground"><Filter size={15} /> {t("archiveView")}</span>
+          {libraryViews.map(view => <button key={view.id} type="button" aria-pressed={activeView === view.id} onClick={() => changeView(view.id)} className={"focus-ring rounded-full px-3.5 py-2 text-sm transition-colors " + (activeView === view.id ? "bg-primary text-white" : "text-muted-foreground hover:bg-secondary hover:text-ink")}>{t(view.key)}</button>)}
+          {activeView === "project" && <div className="flex flex-wrap gap-2 border-l border-border pl-2 sm:ml-2">{lifecycleOptions.map(option => <button key={option.id || "all"} type="button" aria-pressed={lifecycleFilter === option.id} onClick={() => changeStage(option.id)} className={"focus-ring rounded-full px-3 py-2 text-sm transition-colors " + (lifecycleFilter === option.id ? "bg-secondary text-primary" : "text-muted-foreground hover:bg-white hover:text-ink")}>{t(option.key)}</button>)}</div>}
+        </div>
       </section>
 
-      <section className="border-t border-border bg-[#ece9e2]"><div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-5 px-5 py-7 lg:px-10"><div><div className="font-mono text-[10px] uppercase tracking-[.16em] text-primary">{t("missingRecord")}</div><p className="mt-2 text-sm text-muted-foreground">{t("memberFormExtend")}</p></div><Link href="/submit" className="focus-ring flex items-center gap-2 bg-primary px-4 py-3 font-mono text-[10px] uppercase tracking-[.14em] text-white">{t("openSubmissionForm")} <ChevronDown size={14} className="-rotate-90" /></Link></div></section>
+      <section className="page-container py-10 lg:py-14">
+        <SectionHeader
+          eyebrow={activeView === "reference" ? t("academicReferences") : t("clubProjects")}
+          title={t("recordStartingPoint")}
+          action={<div className="relative w-full md:w-80"><label htmlFor="library-search" className="sr-only">{t("filterLibrary")}</label><Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-primary" /><input id="library-search" className="form-control search-control h-11 bg-white/80 pr-3 text-sm" value={query} onChange={event => changeQuery(event.target.value)} placeholder={t("filterLibrary")} /></div>}
+        />
+
+        <div className="mt-8">
+          {isLoading && <LoadingState label={t("loadingArchiveRecords")} />}
+          {error && <StatusBanner tone="error">{t("archiveRefreshError")}</StatusBanner>}
+          {!isLoading && !error && records.length === 0 && <EmptyState icon={<Database size={20} />} title={t("noRecordsMatchFilter")} description={t("tryAnotherFilter")} />}
+          {!isLoading && !error && records.length > 0 && (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {records.map((item, index) => {
+                const isExpanded = expanded === item.slug;
+                return (
+                  <article key={item.slug} id={item.slug} className={"card-lift overflow-hidden " + (isExpanded ? "lg:col-span-2" : "")} style={{ borderTopColor: current.accent }}>
+                    <button type="button" aria-expanded={isExpanded} aria-controls={item.slug + "-details"} onClick={() => setExpanded(isExpanded ? null : item.slug)} className="focus-ring flex w-full items-start gap-4 p-5 text-left md:p-6">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-secondary font-mono text-xs text-primary">{String(index + 1).padStart(2, "0")}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-primary"><span>{item.recordKind === "reference" ? t("referenceLabel") : item.lifecycle && item.lifecycle in lifecycleKeys ? t(lifecycleKeys[item.lifecycle as keyof typeof lifecycleKeys]) : t("projectLabel")}</span><span className="text-muted-foreground">·</span><span className="text-muted-foreground">{item.authorName || t("psecMember")}</span><span className="text-muted-foreground">·</span><span className="text-muted-foreground">{item.attachmentCount || 0} {item.attachmentCount === 1 ? t("publicFile") : t("publicFiles")}</span></span>
+                        <span className="mt-3 block font-display text-xl leading-8">{item.title}</span>
+                        <span className="mt-2 block line-clamp-2 text-sm leading-6 text-muted-foreground">{item.abstract || item.theoreticalBasis || t("notRecordedEntry")}</span>
+                      </span>
+                      <ChevronDown size={18} className={"mt-1 shrink-0 text-muted-foreground transition-transform " + (isExpanded ? "rotate-180 text-primary" : "")} />
+                    </button>
+                    {isExpanded && <div id={item.slug + "-details"} className="grid gap-7 border-t border-border bg-white/55 p-5 md:grid-cols-2 md:p-7 lg:grid-cols-[.92fr_1.08fr]">
+                      <div>
+                        <div className="flex items-center gap-2 text-sm font-semibold text-primary"><BookOpen size={15} /> {t("theoreticalBasis")}</div>
+                        <p className="mt-3 text-sm leading-7 text-ink">{item.theoreticalBasis || t("notRecordedEntry")}</p>
+                        <div className="mt-7 flex items-center gap-2 text-sm font-semibold text-primary"><History size={15} /> {t("creatorHistory")}</div>
+                        <p className="mt-3 text-sm leading-7 text-muted-foreground">{item.historicalBackground || t("notRecordedEntry")}</p>
+                      </div>
+                      <div className="border-t border-border pt-6 md:border-l md:border-t-0 md:pl-7 md:pt-0">
+                        <div className="text-sm font-semibold text-primary">{t("researchHypothesis")}</div>
+                        <p className="mt-3 text-sm leading-7 text-ink">{item.hypothesis || t("notRecordedEntry")}</p>
+                        <div className="mt-7 flex items-center gap-2 text-sm font-semibold text-primary"><FileText size={15} /> {t("procedureDataRecord")}</div>
+                        <p className="mt-3 text-sm leading-7 text-muted-foreground">{item.procedure || t("noProcedureRecord")}</p>
+                        {activeView === "project" && item.lifecycle === "completed" && <div className="mt-7 border-t border-border pt-5">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-primary"><ImageIcon size={15} /> {t("experimentalEvidence")}</div>
+                          {attachments.isLoading && <p className="mt-3 text-sm text-muted-foreground">{t("loadingPhotosData")}</p>}
+                          {!attachments.isLoading && (attachments.data ?? []).length === 0 && <p className="mt-3 text-sm leading-6 text-muted-foreground">{t("noPublicEvidence")}</p>}
+                          {(attachments.data ?? []).length > 0 && <div className="mt-3 grid gap-3 sm:grid-cols-2">{(attachments.data ?? []).map(file => <a key={file.id} href={file.url} target="_blank" rel="noreferrer" className="surface-card group overflow-hidden p-3"><div className="mb-3 flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg bg-secondary text-primary">{file.mimeType.startsWith("image/") ? <img src={file.url} alt={file.fileName} className="h-full w-full object-cover" /> : <Database size={28} />}</div><div className="flex items-center gap-2"><Download size={13} className="shrink-0 text-primary" /><span className="min-w-0 truncate text-sm text-ink group-hover:text-primary">{file.fileName}</span></div><div className="mt-1 text-xs text-muted-foreground">{file.kind && file.kind in fileKindKeys ? t(fileKindKeys[file.kind as keyof typeof fileKindKeys]) : t("fileLabel")} · {file.sizeBytes ? (file.sizeBytes / 1024 / 1024).toFixed(2) + " MB" : t("fileLabel")}</div></a>)}</div>}
+                        </div>}
+                      </div>
+                      <div className="border-t border-border pt-5 lg:col-span-2">
+                        <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-sm text-muted-foreground">{t("archivedRecordHistory")}</span><Link href={"/records/" + item.slug} className="focus-ring text-sm font-semibold text-primary hover:underline">{t("openShareableRecord")}</Link></div>
+                        {activeView === "project" && item.lifecycle === "completed" && <div className="mt-5">{(executionRecords.data ?? []).length === 0 ? <p className="text-sm text-muted-foreground">{t("noExecutionSupplements")}</p> : <div className="grid gap-3 md:grid-cols-2">{(executionRecords.data ?? []).map(record => <div key={record.id} className="surface-card p-4"><div className="flex flex-wrap justify-between gap-2 text-xs text-primary"><span>{t("runRecord")} · {record.submitterName || t("submitter")}</span><span>{displayDate(record.createdAt, language)}</span></div>{record.observationNotes && <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{record.observationNotes}</p>}</div>)}</div>}</div>}
+                      </div>
+                    </div>}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="border-t border-border bg-white/55">
+        <div className="page-container flex flex-wrap items-center justify-between gap-5 py-7"><div><div className="section-kicker">{t("missingRecord")}</div><p className="mt-2 text-sm text-muted-foreground">{t("memberFormExtend")}</p></div><Link href="/submit" className="focus-ring inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-white">{t("openSubmissionForm")} <ArrowUpRight size={14} /></Link></div>
+      </section>
     </div>
   );
 }

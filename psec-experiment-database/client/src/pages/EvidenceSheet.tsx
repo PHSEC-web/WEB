@@ -1,5 +1,6 @@
 import { ArrowLeft, Download, Printer } from "lucide-react";
 import { Link, useRoute } from "wouter";
+import { LoadingState } from "@/components/PsecPrimitives";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 
@@ -78,22 +79,29 @@ export default function EvidenceSheet() {
   );
   if (evidence.isLoading)
     return (
-      <div className="mx-auto max-w-[210mm] px-5 py-24 font-mono text-[10px] uppercase tracking-[.16em] text-muted-foreground">
-        {t("preparingEvidencePack")}
+      <div className="page-evidence">
+        <div className="page-container py-16 lg:py-24">
+          <LoadingState label={t("preparingEvidencePack")} />
+        </div>
       </div>
     );
   if (evidence.error || !evidence.data)
     return (
-      <div className="mx-auto max-w-[210mm] px-5 py-24">
-        <h1 className="font-display text-4xl">
-          {t("evidencePackUnavailable")}
-        </h1>
-        <Link
-          href="/"
-          className="mt-6 inline-flex bg-primary px-4 py-3 font-mono text-[10px] uppercase tracking-[.14em] text-white"
-        >
-          {t("returnToOverview")}
-        </Link>
+      <div className="page-evidence">
+        <div className="page-container py-16 lg:py-24">
+          <div className="surface-card mx-auto max-w-2xl px-6 py-12 text-center md:px-12 md:py-16">
+            <div className="section-kicker">PSEC / {t("evidencePack")}</div>
+            <h1 className="mt-3 font-display text-3xl tracking-[-.02em] text-ink">
+              {t("evidencePackUnavailable")}
+            </h1>
+            <Link
+              href="/"
+              className="focus-ring mt-7 inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-white"
+            >
+              <ArrowLeft size={15} aria-hidden="true" /> {t("returnToOverview")}
+            </Link>
+          </div>
+        </div>
       </div>
     );
   const { record, revisions, attachments, generatedAt, siteName } =
@@ -127,30 +135,31 @@ export default function EvidenceSheet() {
       ? t(fieldLabelKeys[value as keyof typeof fieldLabelKeys])
       : value.replaceAll("_", " ");
   return (
-    <div className="evidence-sheet bg-[#f7f5ef] py-8 print:bg-white print:py-0">
-      <div className="mx-auto max-w-[210mm] bg-white px-6 py-8 shadow-[0_10px_30px_rgba(17,37,67,.12)] md:px-12 md:py-12 print:max-w-none print:shadow-none">
+    <div className="evidence-sheet page-evidence py-8 print:py-0">
+      <div className="mx-auto max-w-[210mm] bg-white px-6 py-8 shadow-[var(--shadow-md)] md:px-12 md:py-12 print:max-w-none print:shadow-none">
         <div className="no-print mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
           <Link
             href={`/records/${record.slug}`}
-            className="focus-ring inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[.14em] text-primary"
+            className="focus-ring inline-flex items-center gap-2 rounded-full text-sm font-medium text-primary transition-opacity hover:opacity-80"
           >
-            <ArrowLeft size={13} /> {t("backToRecord")}
+            <ArrowLeft size={15} aria-hidden="true" /> {t("backToRecord")}
           </Link>
           <button
+            type="button"
             onClick={() => window.print()}
-            className="focus-ring inline-flex items-center gap-2 bg-primary px-4 py-3 font-mono text-[10px] uppercase tracking-[.14em] text-white"
+            className="focus-ring inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-white transition-transform active:scale-[.98]"
           >
-            <Printer size={14} /> {t("printSavePdf")}
+            <Printer size={15} aria-hidden="true" /> {t("printSavePdf")}
           </button>
         </div>
-        <header className="border-b-2 border-[#112543] pb-7">
-          <div className="font-mono text-[10px] uppercase tracking-[.2em] text-primary">
+        <header className="border-b-2 border-ink pb-7">
+          <div className="section-kicker">
             {siteName} / {t("evidencePack")}
           </div>
-          <h1 className="mt-4 font-display text-4xl tracking-[-.04em] text-[#112543] md:text-5xl">
+          <h1 className="mt-3 font-display text-4xl leading-[1.1] tracking-[-.03em] text-ink md:text-5xl">
             {record.title}
           </h1>
-          <p className="mt-4 max-w-3xl text-sm leading-7 text-muted-foreground">
+          <p className="mt-4 content-measure text-sm leading-7 text-muted-foreground">
             {text(record.abstract, t("notRecordedEntry"))}
           </p>
           <div className="mt-6 grid gap-4 border-t border-border pt-5 text-sm sm:grid-cols-3">
@@ -232,13 +241,15 @@ export default function EvidenceSheet() {
             {revisions.map(revision => (
               <div
                 key={revision.id}
-                className="break-inside-avoid border border-border p-4"
+                className="break-inside-avoid surface-card p-4"
               >
-                <div className="flex flex-wrap justify-between gap-2 font-mono text-[9px] uppercase tracking-[.13em] text-primary">
-                  <span>
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="meta-label">
                     v{revision.revisionNo} / {displayAction(revision.action)}
                   </span>
-                  <span>{new Date(revision.createdAt).toLocaleString()}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(revision.createdAt).toLocaleString()}
+                  </span>
                 </div>
                 <p className="mt-2 text-sm font-medium text-ink">
                   {revision.summary}
@@ -248,8 +259,9 @@ export default function EvidenceSheet() {
                   {displayRole(revision.editorRole)}
                 </p>
                 {revision.changedFields.length > 0 && (
-                  <p className="mt-2 font-mono text-[9px] uppercase tracking-[.1em] text-muted-foreground">
-                    {t("changed")} {revision.changedFields.map(displayField).join(", ")}
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {t("changed")}{" "}
+                    {revision.changedFields.map(displayField).join(", ")}
                   </p>
                 )}
               </div>
@@ -267,11 +279,11 @@ export default function EvidenceSheet() {
                 <a
                   key={file.id}
                   href={file.url}
-                  className="no-print flex items-center gap-3 border border-border p-3 text-sm text-primary"
+                  className="no-print focus-ring surface-card flex items-center gap-3 p-3 text-sm text-primary"
                 >
-                  <Download size={14} />{" "}
+                  <Download size={15} aria-hidden="true" />
                   <span className="flex-1">{file.fileName}</span>
-                  <span className="font-mono text-[9px] uppercase tracking-[.1em] text-muted-foreground">
+                  <span className="meta-label text-muted-foreground">
                     {displayFileKind(file.kind)}
                   </span>
                 </a>
@@ -279,7 +291,7 @@ export default function EvidenceSheet() {
             )}
           </div>
         </Section>
-        <footer className="mt-10 border-t border-border pt-4 font-mono text-[9px] uppercase tracking-[.12em] text-muted-foreground">
+        <footer className="mt-10 border-t border-border pt-4 text-xs leading-6 text-muted-foreground">
           PSEC · {record.slug} · {t("generatedFooter")}{" "}
           {new Date(generatedAt).toISOString()}
         </footer>
@@ -296,7 +308,7 @@ function Section({
 }) {
   return (
     <section className="mt-9 break-inside-avoid">
-      <h2 className="border-b border-border pb-3 font-display text-2xl text-[#112543]">
+      <h2 className="border-b border-border pb-3 font-display text-2xl tracking-[-.02em] text-ink">
         {title}
       </h2>
       {children}
@@ -314,9 +326,7 @@ function Field({
 }) {
   return (
     <div className="mt-5">
-      <div className="font-mono text-[9px] uppercase tracking-[.14em] text-primary">
-        {label}
-      </div>
+      <div className="meta-label">{label}</div>
       <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink">
         {text(value, fallback)}
       </p>
@@ -326,9 +336,7 @@ function Field({
 function Meta({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="font-mono text-[9px] uppercase tracking-[.12em] text-muted-foreground">
-        {label}
-      </div>
+      <div className="meta-label text-muted-foreground">{label}</div>
       <div className="mt-1 text-ink">{value}</div>
     </div>
   );

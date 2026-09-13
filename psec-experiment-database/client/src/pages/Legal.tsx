@@ -112,38 +112,78 @@ const copy = {
 } as const;
 
 export default function Legal({ kind }: { kind: LegalKind }) {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const page = copy[language][kind];
   return (
-    <div className="min-h-[70vh] bg-[linear-gradient(180deg,#f8faff_0%,#eef3f8_100%)]">
-      <section className="navy-grid text-white">
-        <div className="mx-auto max-w-[1100px] px-5 pb-14 pt-12 lg:px-10 lg:pb-18 lg:pt-20">
-          <Link href="/" className="focus-ring inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[.18em] text-white/55 hover:text-signal">
-            <ArrowLeft size={13} /> {language === "zh" ? "返回概览" : "Back to overview"}
+    <div className="page-legal">
+      <section className="page-hero navy-grid py-12 lg:py-16">
+        <div className="page-container">
+          <Link
+            href="/"
+            className="focus-ring inline-flex items-center gap-2 rounded-full text-sm text-white/60 transition-colors hover:text-signal"
+          >
+            <ArrowLeft size={15} aria-hidden="true" /> {t("backToOverview")}
           </Link>
-          <div className="mt-10 flex items-center gap-3 font-mono text-[10px] uppercase tracking-[.2em] text-signal">
-            <ShieldCheck size={15} /> {page.eyebrow}
+          <div className="section-kicker mt-7 flex items-center gap-2 text-signal">
+            <ShieldCheck size={15} aria-hidden="true" /> {page.eyebrow}
           </div>
-          <h1 className="mt-4 max-w-4xl font-display text-[clamp(2.7rem,6vw,5.5rem)] leading-[1.02] tracking-[-.05em]">{page.title}</h1>
-          <p className="mt-6 max-w-3xl text-[15px] leading-7 text-white/70">{page.intro}</p>
+          <h1 className="mt-3 max-w-4xl font-display text-[clamp(2.45rem,6vw,5rem)] leading-[1.08] tracking-[-.035em]">
+            {page.title}
+          </h1>
+          <p className="mt-5 content-measure text-base leading-7 text-white/68">
+            {page.intro}
+          </p>
         </div>
       </section>
-      <main className="mx-auto max-w-[1100px] px-5 py-10 lg:px-10 lg:py-16">
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-3 border border-[#cbd8e6] bg-white/70 px-5 py-4 text-xs text-muted-foreground shadow-sm backdrop-blur">
-          <span>{language === "zh" ? "版本：2026-09-13-v1 · 最后更新：2026 年 9 月 13 日" : "Version: 2026-09-13-v1 · Last updated: September 13, 2026"}</span>
-          <span className="inline-flex items-center gap-1"><ExternalLink size={13} /> {language === "zh" ? "以学校政策和适用法律为准" : "Subject to school policy and applicable law"}</span>
+      <div className="page-container py-10 lg:py-16">
+        <div className="content-measure">
+          <div className="surface-card flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-5 py-4 text-xs text-muted-foreground">
+            <span>
+              {language === "zh"
+                ? "版本：2026-09-13-v1 · 最后更新：2026 年 9 月 13 日"
+                : "Version: 2026-09-13-v1 · Last updated: September 13, 2026"}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <ExternalLink size={13} aria-hidden="true" />
+              {language === "zh"
+                ? "以学校政策和适用法律为准"
+                : "Subject to school policy and applicable law"}
+            </span>
+          </div>
+          <article className="mt-10">
+            {page.sections.map(section => (
+              <section
+                key={section.title}
+                className="mt-9 border-t border-border pt-9 first:mt-0 first:border-t-0 first:pt-0"
+              >
+                <h2 className="font-display text-2xl tracking-[-.02em] text-ink">
+                  {section.title}
+                </h2>
+                {section.paragraphs.map(paragraph => (
+                  <p
+                    key={paragraph}
+                    className="mt-4 text-[15px] leading-7 text-muted-foreground"
+                  >
+                    {paragraph}
+                  </p>
+                ))}
+                {section.bullets && (
+                  <ul className="mt-4 list-disc space-y-2 pl-5 text-[15px] leading-7 text-muted-foreground">
+                    {section.bullets.map(bullet => (
+                      <li key={bullet}>{bullet}</li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            ))}
+            <p className="mt-10 border-t border-border pt-8 text-sm leading-6 text-muted-foreground">
+              {language === "zh"
+                ? "如果你是未成年人，或研究涉及他人、敏感信息或现实风险，请先向监护人、指导老师或学校负责部门咨询。"
+                : "If you are a minor, or your study involves other people, sensitive information, or real-world risk, consult a guardian, supervisor, or the relevant school office first."}
+            </p>
+          </article>
         </div>
-        <div className="grid gap-5">
-          {page.sections.map(section => (
-            <section key={section.title} className="glass-panel p-6 md:p-8">
-              <h2 className="font-display text-2xl text-ink">{section.title}</h2>
-              {section.paragraphs.map(paragraph => <p key={paragraph} className="mt-4 text-sm leading-7 text-muted-foreground">{paragraph}</p>)}
-              {section.bullets && <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-7 text-muted-foreground">{section.bullets.map(bullet => <li key={bullet}>{bullet}</li>)}</ul>}
-            </section>
-          ))}
-        </div>
-        <p className="mt-8 text-xs leading-6 text-muted-foreground">{language === "zh" ? "如果你是未成年人，或研究涉及他人、敏感信息或现实风险，请先向监护人、指导老师或学校负责部门咨询。" : "If you are a minor, or your study involves other people, sensitive information, or real-world risk, consult a guardian, supervisor, or the relevant school office first."}</p>
-      </main>
+      </div>
     </div>
   );
 }

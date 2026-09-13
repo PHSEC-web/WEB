@@ -69,6 +69,20 @@ sudo systemctl restart psec-web
 sudo systemctl status psec-web --no-pager
 ```
 
+If the normal migration command fails because the old migration ledger tries to
+recreate tables that already exist, stop and back up the database first. Then
+run this one-time repair and retry the migration:
+
+```bash
+pnpm run db:repair-evidence
+pnpm exec drizzle-kit migrate
+```
+
+The repair command is an idempotent baseline for the old exported database: it
+verifies the core tables, repairs the record-based evidence columns, creates the
+school-email code table if it is absent, and records the already-present
+migrations through `0012`. It does not print or change any credentials.
+
 如果服务器的当前分支不是 `main`，先停止，不要在生产目录强行切换分支或覆盖未提交改动。`ui-redesign` 只用于预览和 GitHub 协作，不能直接部署到生产目录。迁移命令使用现有 `.env` 的数据库地址，执行前要确认备份已完成。
 
 打开 `https://psec.club/`，使用普通账号上传附件并下载，再验证未登录/无权用户不能访问私有附件；管理员也要检查投稿附件。若服务启动失败，查看 `sudo journalctl -u psec-web -n 80 --no-pager`，不要把含密钥的日志直接贴到公开渠道。**GitHub 推送和生产部署是两件不同的事。**

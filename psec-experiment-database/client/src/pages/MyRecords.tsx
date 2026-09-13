@@ -5,13 +5,29 @@ import {
   History,
   LogIn,
   PlusCircle,
+  RefreshCw,
   Send,
   Trash2,
 } from "lucide-react";
-import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from "react";
 import { Link } from "wouter";
 import { startLogin } from "@/const";
 import { useAuth } from "@/_core/hooks/useAuth";
+import {
+  EmptyState,
+  LoadingState,
+  PageHero,
+  PsecField,
+  SectionHeader,
+  StatusBanner,
+} from "@/components/PsecPrimitives";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 
@@ -48,6 +64,26 @@ const uploadKindKeys = { photo: "photoFile", data: "dataFile", report: "reportFi
 const lifecycleKeys = { idea: "ideaStage", design: "designStage", in_progress: "inProgressStage", completed: "completedStage" } as const;
 const statusKeys = { approved: "statusPublished", published: "statusPublished", pending: "statusPending", needs_revision: "statusNeedsRevision", rejected: "statusRejected", hidden: "statusHidden", archived: "statusArchived" } as const;
 
+// Member-facing wording for outcomes the shared translation table does not cover yet.
+// Server errors are never printed verbatim: members only see what they can act on.
+const noticeCopy = {
+  loadFailed: {
+    zh: "无法加载你的记录，请检查网络后重试。",
+    en: "We couldn’t load your records. Check your connection and try again.",
+  },
+  retry: { zh: "重新加载", en: "Try again" },
+  removeFailed: {
+    zh: "暂时无法移除这条记录，请稍后重试。",
+    en: "We couldn’t remove this record right now. Please try again.",
+  },
+  appendFailed: {
+    zh: "暂时无法追加结果，请稍后重试。",
+    en: "We couldn’t append the results right now. Please try again.",
+  },
+} as const;
+
+type Notice = { tone: "success" | "error"; text: string } | null;
+
 export default function MyRecords() {
   const { language, t } = useLanguage();
   const { user, loading } = useAuth();
@@ -62,24 +98,27 @@ export default function MyRecords() {
   const [ethicsNotes, setEthicsNotes] = useState("");
   const [summary, setSummary] = useState(() => t("addedResultsEvidence"));
   const [files, setFiles] = useState<Upload[]>([]);
-  const [message, setMessage] = useState("");
+  const [notice, setNotice] = useState<Notice>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [confirmTitle, setConfirmTitle] = useState("");
+  const [evidenceRequest, setEvidenceRequest] = useState(0);
+  const evidenceInput = useRef<HTMLInputElement>(null);
   const remove = trpc.records.deleteOwn.useMutation({
     onSuccess: () => {
       setDeleteId(null);
       setConfirmTitle("");
-      setMessage(t("projectRemoved"));
+      setNotice({ tone: "success", text: t("projectRemoved") });
       void utils.records.mine.invalidate();
       void utils.records.list.invalidate();
       void utils.experiments.list.invalidate();
       void utils.experiments.completed.invalidate();
     },
-    onError: error => setMessage(error.message),
+    onError: () =>
+      setNotice({ tone: "error", text: noticeCopy.removeFailed[language] }),
   });
   const append = trpc.records.appendResult.useMutation({
     onSuccess: () => {
-      setMessage(t("newCompletedVersion"));
+      setNotice({ tone: "success", text: t("newCompletedVersion") });
       setActiveId(null);
       setResults("");
       setLimitations("");
@@ -89,9 +128,13 @@ export default function MyRecords() {
       void utils.records.mine.invalidate();
       void utils.records.list.invalidate();
     },
-    onError: error => setMessage(error.message),
+    onError: () =>
+      setNotice({ tone: "error", text: noticeCopy.appendFailed[language] }),
   });
   const records = mine.data ?? [];
+  // A failed query must never be presented as an empty archive, while stale rows stay visible.
+  const showEmpty = !mine.isError && mine.data !== undefined && records.length === 0;
+  const showList = records.length > 0;
   const displayLifecycle = (value?: string | null) => value && value in lifecycleKeys ? t(lifecycleKeys[value as keyof typeof lifecycleKeys]) : value || t("referenceLabel");
   const displayStatus = (value?: string | null) => value && value in statusKeys ? t(statusKeys[value as keyof typeof statusKeys]) : value || "";
   const displayFileKind = (value?: string | null) => value && value in uploadKindKeys ? t(uploadKindKeys[value as keyof typeof uploadKindKeys]) : value || t("fileLabel");
@@ -100,20 +143,51 @@ export default function MyRecords() {
     [records]
   );
 
+  // The evidence entry point opens the append panel and lands on the upload control.
+  useEffect(() => {
+    if (!evidenceRequest) return;
+    const input = evidenceInput.current;
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    input.closest("label")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [evidenceRequest]);
+
+  const toggleAppend = (id: number) => {
+    setActiveId(current => (current === id ? null : id));
+    setNotice(null);
+  };
+  const toggleDelete = (id: number) => {
+    setDeleteId(current => (current === id ? null : id));
+    setConfirmTitle("");
+    setNotice(null);
+  };
+  const requestEvidence = (id: number) => {
+    setActiveId(id);
+    setNotice(null);
+    setEvidenceRequest(count => count + 1);
+  };
+
   const onFiles = (event: ChangeEvent<HTMLInputElement>) => {
-    const selected = Array.from(event.target.files ?? []);
+    const input = event.target;
+    const selected = Array.from(input.files ?? []);
     if (!selected.length) return;
     if (files.length + selected.length > 8) {
-      setMessage(t("uploadLimit"));
+      setNotice({ tone: "error", text: t("uploadLimit") });
+      input.value = "";
       return;
     }
     const bad = selected.find(
       file => !allowed.has(file.type) || file.size > 8 * 1024 * 1024
     );
     if (bad) {
-      setMessage(language === "zh" ? `${bad.name} 不支持或超过 8 MB。` : `${bad.name} ${t("unsupportedFile")}`);
+      setNotice({
+        tone: "error",
+        text: language === "zh" ? bad.name + " 不支持或超过 8 MB。" : bad.name + " " + t("unsupportedFile"),
+      });
+      input.value = "";
       return;
     }
+    setNotice(null);
     Promise.all(
       selected.map(
         file =>
@@ -128,19 +202,22 @@ export default function MyRecords() {
                 kind: kindFor(file),
               });
             reader.onerror = () =>
-              reject(new Error(`${t("couldNotReadFile")} ${file.name}`));
+              reject(new Error(t("couldNotReadFile") + " " + file.name));
             reader.readAsDataURL(file);
           })
       )
     )
       .then(prepared => setFiles(current => [...current, ...prepared]))
-      .catch((error: Error) => setMessage(error.message));
-    event.target.value = "";
+      // The only rejection here is this browser-side read failure we composed above.
+      .catch((error: Error) =>
+        setNotice({ tone: "error", text: error.message })
+      );
+    input.value = "";
   };
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!activeId) return;
-    setMessage("");
+    setNotice(null);
     append.mutate({
       id: activeId,
       results,
@@ -154,288 +231,338 @@ export default function MyRecords() {
 
   if (loading)
     return (
-      <div className="mx-auto max-w-[1440px] px-5 py-24 font-mono text-[10px] uppercase tracking-[.16em] text-muted-foreground">
-        {t("checkingMemberSession")}
+      <div className="page-records">
+        <div className="page-container py-24">
+          <LoadingState label={t("checkingMemberSession")} />
+        </div>
       </div>
     );
   if (!user)
     return (
-      <div className="mx-auto max-w-[1440px] px-5 py-20 lg:px-10">
-        <div className="mx-auto max-w-2xl border border-border bg-card p-8 md:p-12">
-          <div className="flex h-11 w-11 items-center justify-center bg-[#e7eef6] text-primary">
-            <LogIn size={19} />
+      <div className="page-records">
+        <div className="page-container py-16 lg:py-24">
+          <div className="surface-card mx-auto max-w-2xl p-8 md:p-12">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-secondary text-primary">
+              <LogIn size={19} aria-hidden="true" />
+            </div>
+            <div className="section-kicker mt-7">{t("memberWorkspace")}</div>
+            <h1 className="mt-3 font-display text-4xl tracking-[-.04em]">
+              {t("yourResearchRecord")}
+            </h1>
+            <p className="mt-5 text-sm leading-7 text-muted-foreground">
+              {t("signInMemberDescription")}
+            </p>
+            <button
+              type="button"
+              onClick={() => startLogin()}
+              className="focus-ring mt-8 inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 font-mono text-[10px] uppercase tracking-[.14em] text-white transition-transform active:scale-[.98]"
+            >
+              <LogIn size={14} aria-hidden="true" /> {t("signInContinue")}
+            </button>
           </div>
-          <div className="mt-7 font-mono text-[10px] uppercase tracking-[.18em] text-primary">
-            {t("memberWorkspace")}
-          </div>
-          <h1 className="mt-3 font-display text-4xl tracking-[-.04em]">
-            {t("yourResearchRecord")}
-          </h1>
-          <p className="mt-5 text-sm leading-7 text-muted-foreground">
-            {t("signInMemberDescription")}
-          </p>
-          <button
-            onClick={() => startLogin()}
-            className="focus-ring mt-8 inline-flex items-center gap-2 bg-primary px-5 py-3 font-mono text-[10px] uppercase tracking-[.14em] text-white"
-          >
-            <LogIn size={14} /> {t("signInContinue")}
-          </button>
         </div>
       </div>
     );
   return (
     <div className="page-records">
-      <section className="navy-grid text-white">
-        <div className="mx-auto max-w-[1440px] px-5 pb-14 pt-14 lg:px-10 lg:pb-18 lg:pt-20">
-          <div className="font-mono text-[10px] uppercase tracking-[.2em] text-signal">
-            {t("memberWorkspace")} / {user.name || t("psecMember")}
-          </div>
-          <h1 className="mt-4 font-display text-[clamp(2.8rem,6vw,5.8rem)] leading-[1.02] tracking-[-.06em]">
+      <PageHero
+        compact
+        eyebrow={t("memberWorkspace") + " / " + (user.name || t("psecMember"))}
+        title={
+          <>
             {t("myResearch")}
             <br />
-            <span className="text-[#9dc4f4]">{t("myRecordsTitle")}</span>
-          </h1>
-          <p className="mt-6 max-w-2xl text-[16px] leading-7 text-white/60">
-            {t("trackRecordStatus")}
-          </p>
-        </div>
-      </section>
-      <main className="mx-auto max-w-[1440px] px-5 py-12 lg:px-10 lg:py-16">
-        {message && (
-          <div
-            role="status"
-            className="mb-6 border border-[#b8ccb5] bg-[#edf5eb] px-4 py-3 text-sm text-[#3f7b44]"
-          >
-            {message}
-          </div>
-        )}
-        <div className="flex flex-wrap items-end justify-between gap-5 border-b border-border pb-7">
-          <div>
-            <div className="font-mono text-[10px] uppercase tracking-[.16em] text-primary">
-              {records.length} {records.length === 1 ? t("ownedRecordSingular") : t("ownedRecordPlural")}
-            </div>
-            <h2 className="mt-2 font-display text-3xl">{t("researchLifecycle")}</h2>
-          </div>
-          <Link
-            href="/submit"
-            className="focus-ring inline-flex items-center gap-2 bg-primary px-4 py-3 font-mono text-[10px] uppercase tracking-[.14em] text-white"
-          >
-            <PlusCircle size={14} /> {t("newProject")}
-          </Link>
-        </div>
-        {mine.isLoading ? (
-          <div className="py-12 font-mono text-[10px] uppercase tracking-[.16em] text-muted-foreground">
-            {t("loadingYourRecords")}
-          </div>
-        ) : records.length === 0 ? (
-          <div className="mt-8 border border-dashed border-[#aeb9c8] bg-[#f0f4f8] p-10 text-center">
-            <FolderOpen className="mx-auto text-primary" size={24} />
-            <h2 className="mt-4 font-display text-2xl">{t("noRecordsYet")}</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {t("noRecordsYetText")}
-            </p>
+            <span className="text-signal">{t("myRecordsTitle")}</span>
+          </>
+        }
+        description={t("trackRecordStatus")}
+      />
+      <section className="page-container py-10 lg:py-14">
+        <SectionHeader
+          eyebrow={mine.data ? records.length + " " + (records.length === 1 ? t("ownedRecordSingular") : t("ownedRecordPlural")) : undefined}
+          title={t("researchLifecycle")}
+          action={
             <Link
               href="/submit"
-              className="mt-6 inline-flex bg-primary px-4 py-3 font-mono text-[10px] uppercase tracking-[.14em] text-white"
+              className="focus-ring inline-flex items-center gap-2 rounded-full bg-primary px-4 py-3 font-mono text-[10px] uppercase tracking-[.14em] text-white transition-transform active:scale-[.98]"
             >
-              {t("createRecord")}
+              <PlusCircle size={14} aria-hidden="true" /> {t("newProject")}
             </Link>
+          }
+        />
+        {notice && (
+          <div className="mt-6">
+            <StatusBanner tone={notice.tone}>
+              <span className="break-words">{notice.text}</span>
+            </StatusBanner>
           </div>
-        ) : (
-          <div className="mt-8 space-y-5">
-            {records.map(record => (
-              <article
-                key={record.id}
-                className="border border-border bg-card p-5 md:p-6"
+        )}
+        {mine.isError && (
+          <div className="mt-6">
+            <StatusBanner tone="error">
+              <span className="block break-words">
+                {noticeCopy.loadFailed[language]}
+              </span>
+              <button
+                type="button"
+                onClick={() => void mine.refetch()}
+                disabled={mine.isFetching}
+                className="focus-ring mt-3 inline-flex items-center gap-2 rounded-full border border-danger/35 bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[.12em] text-danger transition-colors hover:border-danger disabled:opacity-60"
               >
-                <div className="flex flex-wrap items-start justify-between gap-5">
-                  <div>
-                    <div className="font-mono text-[9px] uppercase tracking-[.14em] text-primary">
-                      {displayStatus(record.status)} ·{" "}
-                      {displayLifecycle(record.lifecycle)} · v
-                      {record.revisionCount}
-                    </div>
-                    <h2 className="mt-2 font-display text-2xl">
-                      {record.title}
-                    </h2>
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                      {record.abstract}
-                    </p>
-                    {record.reviewComment && (
-                      <p className="mt-4 border-l-2 border-[#c58e8e] pl-3 text-sm text-[#8a2c2c]">
-                        {t("reviewNote")} {record.reviewComment}
+                <RefreshCw
+                  size={13}
+                  aria-hidden="true"
+                  className={mine.isFetching ? "animate-spin" : undefined}
+                />
+                {noticeCopy.retry[language]}
+              </button>
+            </StatusBanner>
+          </div>
+        )}
+        {mine.isLoading && (
+          <div className="mt-8">
+            <LoadingState label={t("loadingYourRecords")} />
+          </div>
+        )}
+        {showEmpty && (
+          <div className="mt-8">
+            <EmptyState
+              icon={<FolderOpen size={20} aria-hidden="true" />}
+              title={t("noRecordsYet")}
+              description={t("noRecordsYetText")}
+              action={
+                <Link
+                  href="/submit"
+                  className="focus-ring inline-flex items-center gap-2 rounded-full bg-primary px-4 py-3 font-mono text-[10px] uppercase tracking-[.14em] text-white transition-transform active:scale-[.98]"
+                >
+                  {t("createRecord")}
+                </Link>
+              }
+            />
+          </div>
+        )}
+        {showList && (
+          <div className="mt-8 space-y-5">
+            {records.map(record => {
+              const appendOpen = activeId === record.id;
+              const deleteOpen = deleteId === record.id;
+              const appendPanelId = "record-" + record.id + "-append";
+              const deletePanelId = "record-" + record.id + "-delete";
+              return (
+                <article
+                  key={record.id}
+                  className="border border-border bg-card p-5 md:p-6"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-5">
+                    <div className="min-w-0">
+                      <div className="font-mono text-[9px] uppercase tracking-[.14em] text-primary">
+                        {displayStatus(record.status)} ·{" "}
+                        {displayLifecycle(record.lifecycle)} · v
+                        {record.revisionCount}
+                      </div>
+                      <h2 className="mt-2 break-words font-display text-2xl">
+                        {record.title}
+                      </h2>
+                      <p className="mt-2 max-w-2xl break-words text-sm leading-6 text-muted-foreground">
+                        {record.abstract}
                       </p>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {record.status === "published" && (
-                      <Link
-                        href={`/records/${record.slug}`}
-                        className="focus-ring border border-border bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[.12em] text-primary"
+                      {record.reviewComment && (
+                        <p className="mt-4 break-words border-l-2 border-danger/40 pl-3 text-sm text-danger">
+                          {t("reviewNote")} {record.reviewComment}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {record.status === "published" && (
+                        <Link
+                          href={"/records/" + record.slug}
+                          className="focus-ring inline-flex items-center rounded-full border border-border bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[.12em] text-primary transition-colors hover:border-primary"
+                        >
+                          {t("publicRecord")}
+                        </Link>
+                      )}
+                      <button
+                        type="button"
+                        aria-expanded={appendOpen}
+                        aria-controls={appendPanelId}
+                        onClick={() => toggleAppend(record.id)}
+                        className="focus-ring inline-flex items-center gap-2 rounded-full bg-[var(--success)] px-3 py-2 font-mono text-[10px] uppercase tracking-[.12em] text-white transition-opacity hover:opacity-90"
                       >
-                        {t("publicRecord")}
-                      </Link>
-                    )}
-                    <button
-                      onClick={() => {
-                        setActiveId(activeId === record.id ? null : record.id);
-                        setMessage("");
-                      }}
-                      className="focus-ring inline-flex items-center gap-2 bg-[#3f7b44] px-3 py-2 font-mono text-[10px] uppercase tracking-[.12em] text-white"
+                        <CheckCircle2 size={14} aria-hidden="true" /> {t("addResults")}
+                      </button>
+                      <button
+                        type="button"
+                        aria-expanded={appendOpen}
+                        aria-controls={appendPanelId}
+                        onClick={() => requestEvidence(record.id)}
+                        className="focus-ring inline-flex items-center gap-2 rounded-full border border-[#b8d6bd] bg-[var(--success-surface)] px-3 py-2 font-mono text-[10px] uppercase tracking-[.12em] text-[#315f3a] transition-colors hover:bg-white"
+                      >
+                        <FileUp size={14} aria-hidden="true" /> {t("addEvidence")}
+                      </button>
+                      {record.recordKind === "project" && (
+                        <button
+                          type="button"
+                          aria-expanded={deleteOpen}
+                          aria-controls={deletePanelId}
+                          onClick={() => toggleDelete(record.id)}
+                          className="focus-ring inline-flex items-center gap-2 rounded-full border border-danger/35 bg-white px-3 py-2 font-mono text-[10px] uppercase tracking-[.12em] text-danger transition-colors hover:border-danger"
+                        >
+                          <Trash2 size={14} aria-hidden="true" /> {t("remove")}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {deleteOpen && (
+                    <div
+                      id={deletePanelId}
+                      className="mt-6 border-t border-danger/25 pt-5"
                     >
-                      <CheckCircle2 size={14} /> {t("addResults")}
-                    </button>
-                    {record.recordKind === "project" && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDeleteId(
-                            deleteId === record.id ? null : record.id
-                          );
-                          setConfirmTitle("");
-                          setMessage("");
-                        }}
-                        className="focus-ring inline-flex items-center gap-2 border border-[#c58e8e] px-3 py-2 font-mono text-[10px] uppercase tracking-[.12em] text-[#8a2c2c]"
-                      >
-                        <Trash2 size={14} /> {t("remove")}
-                      </button>
-                    )}
-                  </div>
-                </div>
-                {deleteId === record.id && (
-                  <div className="mt-6 border-t border-[#ead0d0] pt-5">
-                    <label className="block text-sm text-[#8a2c2c]">
-                      {t("typeExactTitle")}
-                      <input
-                        value={confirmTitle}
-                        onChange={event => setConfirmTitle(event.target.value)}
-                        className="form-control mt-2"
-                        placeholder={record.title}
-                      />
-                    </label>
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <button
-                        type="button"
-                        disabled={
-                          confirmTitle !== record.title || remove.isPending
-                        }
-                        onClick={() =>
-                          remove.mutate({ id: record.id, confirmTitle })
-                        }
-                        className="focus-ring bg-[#8a2c2c] px-4 py-3 text-xs text-white disabled:opacity-50"
-                      >
-                        {remove.isPending ? t("removing") : t("confirmRemoval")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDeleteId(null);
-                          setConfirmTitle("");
-                        }}
-                        className="focus-ring border border-border px-4 py-3 text-xs"
-                      >
-                        {t("cancel")}
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {activeId === record.id && (
-                  <form
-                    onSubmit={submit}
-                    className="mt-6 border-t border-border pt-6"
-                  >
-                    <div className="font-mono text-[10px] uppercase tracking-[.15em] text-[#3f7b44]">
-                      {t("appendCompletedResults")}
-                    </div>
-                    <div className="mt-4 grid gap-4 md:grid-cols-2">
-                      <TextArea
-                        label={t("resultsConclusions")}
-                        value={results}
-                        onChange={setResults}
-                        required
-                      />
-                      <TextArea
-                        label={t("limitationsReflection")}
-                        value={limitations}
-                        onChange={setLimitations}
-                      />
-                      <TextArea
-                        label={t("nextQuestion")}
-                        value={nextQuestion}
-                        onChange={setNextQuestion}
-                      />
-                      <TextArea
-                        label={t("ethicsConsentNotes")}
-                        value={ethicsNotes}
-                        onChange={setEthicsNotes}
-                      />
-                      <label className="md:col-span-2">
-                        <span className="font-mono text-[9px] uppercase tracking-[.13em] text-ink">
-                          {t("revisionSummary")}
-                        </span>
+                      <label className="block text-sm text-danger">
+                        {t("typeExactTitle")}
                         <input
-                          value={summary}
-                          onChange={event => setSummary(event.target.value)}
-                          className="form-control mt-1"
-                          required
+                          value={confirmTitle}
+                          onChange={event => setConfirmTitle(event.target.value)}
+                          className="form-control mt-2"
+                          placeholder={record.title}
                         />
                       </label>
-                    </div>
-                    <label className="focus-ring mt-5 flex cursor-pointer items-center gap-3 border border-dashed border-[#7aa67d] bg-[#edf5eb] px-4 py-4 text-sm text-muted-foreground">
-                      <FileUp size={17} className="text-[#3f7b44]" />
-                      <span>
-                        <strong className="block text-ink">
-                          {t("attachReportImageDataset")}
-                        </strong>
-                        <span className="text-xs">
-                          {t("reportsPhotosPublic")}
-                        </span>
-                      </span>
-                      <input
-                        type="file"
-                        multiple
-                        accept="image/png,image/jpeg,image/webp,.pdf,.doc,.docx,.txt,.csv,.json,.xlsx,.xls,.zip"
-                        className="sr-only"
-                        onChange={onFiles}
-                      />
-                    </label>
-                    {files.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {files.map((file, index) => (
-                          <span
-                            key={`${file.fileName}-${index}`}
-                            className="border border-[#b8ccb5] bg-white px-3 py-2 text-xs text-ink"
-                          >
-                            {file.fileName}
-                          </span>
-                        ))}
+                      <div className="mt-4 flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          disabled={
+                            confirmTitle !== record.title || remove.isPending
+                          }
+                          onClick={() =>
+                            remove.mutate({ id: record.id, confirmTitle })
+                          }
+                          className="focus-ring rounded-full bg-danger px-4 py-3 font-mono text-[10px] uppercase tracking-[.12em] text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                        >
+                          {remove.isPending ? t("removing") : t("confirmRemoval")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeleteId(null);
+                            setConfirmTitle("");
+                          }}
+                          className="focus-ring rounded-full border border-border bg-white px-4 py-3 font-mono text-[10px] uppercase tracking-[.12em] text-ink transition-colors hover:border-primary hover:text-primary"
+                        >
+                          {t("cancel")}
+                        </button>
                       </div>
-                    )}
-                    <button
-                      type="submit"
-                      disabled={
-                        append.isPending ||
-                        (!results.trim() && files.length === 0)
-                      }
-                      className="focus-ring mt-5 inline-flex items-center gap-2 bg-[#3f7b44] px-4 py-3 font-mono text-[10px] uppercase tracking-[.14em] text-white disabled:opacity-50"
+                    </div>
+                  )}
+                  {appendOpen && (
+                    <form
+                      id={appendPanelId}
+                      onSubmit={submit}
+                      className="mt-6 border-t border-border pt-6"
                     >
-                      <Send size={14} />{" "}
-                      {append.isPending
-                        ? t("appending")
-                        : t("appendCompletedResult")}
-                    </button>
-                  </form>
-                )}
-              </article>
-            ))}
+                      <div className="font-mono text-[10px] uppercase tracking-[.15em] text-[#315f3a]">
+                        {t("appendCompletedResults")}
+                      </div>
+                      <div className="mt-4 grid gap-4 md:grid-cols-2">
+                        <TextArea
+                          label={t("resultsConclusions")}
+                          value={results}
+                          onChange={setResults}
+                          required={files.length === 0}
+                        />
+                        <TextArea
+                          label={t("limitationsReflection")}
+                          value={limitations}
+                          onChange={setLimitations}
+                        />
+                        <TextArea
+                          label={t("nextQuestion")}
+                          value={nextQuestion}
+                          onChange={setNextQuestion}
+                        />
+                        <TextArea
+                          label={t("ethicsConsentNotes")}
+                          value={ethicsNotes}
+                          onChange={setEthicsNotes}
+                        />
+                        <div className="md:col-span-2">
+                          <PsecField label={t("revisionSummary")} required>
+                            <input
+                              value={summary}
+                              onChange={event => setSummary(event.target.value)}
+                              className="form-control"
+                              required
+                            />
+                          </PsecField>
+                        </div>
+                      </div>
+                      <label className="focus-ring mt-5 flex cursor-pointer items-center gap-3 rounded-[var(--radius-card)] border border-dashed border-[#7aa67d] bg-[var(--success-surface)] px-4 py-4 text-sm text-muted-foreground transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 hover:border-primary">
+                        <FileUp size={17} className="shrink-0 text-[#315f3a]" aria-hidden="true" />
+                        <span className="min-w-0">
+                          <strong className="block text-ink">
+                            {t("attachReportImageDataset")}
+                          </strong>
+                          <span className="block text-xs">
+                            {t("reportsPhotosPublic")}
+                          </span>
+                        </span>
+                        <input
+                          ref={evidenceInput}
+                          type="file"
+                          multiple
+                          accept="image/png,image/jpeg,image/webp,.pdf,.doc,.docx,.txt,.csv,.json,.xlsx,.xls,.zip"
+                          className="sr-only"
+                          onChange={onFiles}
+                        />
+                      </label>
+                      {files.length > 0 && (
+                        <ul
+                          aria-label={t("attachReportImageDataset")}
+                          className="mt-3 flex flex-wrap gap-2"
+                        >
+                          {files.map((file, index) => (
+                            <li
+                              key={file.fileName + "-" + index}
+                              title={file.fileName}
+                              className="flex min-w-0 max-w-full items-center border border-[#b8d6bd] bg-white px-3 py-2 text-xs text-ink"
+                            >
+                              <span className="min-w-0 truncate">
+                                {file.fileName}
+                              </span>
+                              <span className="sr-only">
+                                {displayFileKind(file.kind)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <button
+                        type="submit"
+                        disabled={
+                          append.isPending ||
+                          (!results.trim() && files.length === 0)
+                        }
+                        className="focus-ring mt-5 inline-flex items-center gap-2 rounded-full bg-[var(--success)] px-4 py-3 font-mono text-[10px] uppercase tracking-[.14em] text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                      >
+                        <Send size={14} aria-hidden="true" />{" "}
+                        {append.isPending
+                          ? t("appending")
+                          : t("appendCompletedResult")}
+                      </button>
+                    </form>
+                  )}
+                </article>
+              );
+            })}
           </div>
-        )}{" "}
+        )}
         {pending.length > 0 && (
           <p className="mt-6 flex items-center gap-2 text-sm text-muted-foreground">
-            <History size={15} /> {pending.length} {pending.length === 1 ? t("awaitingReviewSingular") : t("awaitingReviewPlural")}
+            <History size={15} aria-hidden="true" /> {pending.length}{" "}
+            {pending.length === 1
+              ? t("awaitingReviewSingular")
+              : t("awaitingReviewPlural")}
           </p>
         )}
-      </main>
+      </section>
     </div>
   );
 }
@@ -451,17 +578,13 @@ function TextArea({
   required?: boolean;
 }) {
   return (
-    <label>
-      <span className="font-mono text-[9px] uppercase tracking-[.13em] text-ink">
-        {label}
-        {required ? " *" : ""}
-      </span>
+    <PsecField label={label} required={required}>
       <textarea
         value={value}
         onChange={event => onChange(event.target.value)}
-        className="form-control mt-1 min-h-28 resize-y"
+        className="form-control min-h-28 resize-y"
         required={required}
       />
-    </label>
+    </PsecField>
   );
 }
