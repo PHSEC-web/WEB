@@ -56,7 +56,7 @@ body {
   min-width: 320px;
   background: radial-gradient(circle at 8% 0%, rgba(181, 211, 255, .55), transparent 30rem), radial-gradient(circle at 94% 8%, rgba(220, 207, 255, .4), transparent 27rem), var(--background);
   color: var(--foreground);
-  font-family: "Noto Sans SC", -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", sans-serif;
+  font-family: "Noto Sans SC Variable", -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 button, input, textarea, select { font: inherit; }
@@ -72,7 +72,7 @@ button { cursor: pointer; }
 .delay-2 { animation-delay: 140ms; }
 .delay-3 { animation-delay: 200ms; }
 
-.font-display { font-family: "Noto Sans SC", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif; font-weight: 650; }
+.font-display { font-family: "Noto Sans SC Variable", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif; font-weight: 650; }
 .font-mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", "Courier New", monospace; }
 .paper-grid {
   background-image: radial-gradient(rgba(23, 105, 255, .12) 1px, transparent 1px);
