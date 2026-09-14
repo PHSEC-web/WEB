@@ -1,4 +1,5 @@
 import { ArrowLeft, Download, Printer } from "lucide-react";
+import { useRef, useState } from "react";
 import { Link, useRoute } from "wouter";
 import { LoadingState } from "@/components/PsecPrimitives";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -74,6 +75,9 @@ export default function EvidenceSheet() {
   const { language, t } = useLanguage();
   const [, params] = useRoute("/records/:slug/evidence");
   const slug = params?.slug || "";
+  const evidenceSheetRef = useRef<HTMLDivElement>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadFailed, setDownloadFailed] = useState(false);
   const evidence = trpc.records.evidence.useQuery(
     { slug },
     { enabled: Boolean(slug) }
@@ -135,9 +139,74 @@ export default function EvidenceSheet() {
     value in fieldLabelKeys
       ? t(fieldLabelKeys[value as keyof typeof fieldLabelKeys])
       : value.replaceAll("_", " ");
+
+  const downloadEvidencePack = async () => {
+    const element = evidenceSheetRef.current;
+    if (!element || isDownloading) return;
+
+    setIsDownloading(true);
+    setDownloadFailed(false);
+    try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import("html2canvas-pro"),
+        import("jspdf"),
+      ]);
+      await document.fonts.ready;
+      const canvas = await html2canvas(element, {
+        backgroundColor: "#ffffff",
+        ignoreElements: candidate =>
+          candidate.classList.contains("no-print"),
+        logging: false,
+        onclone: clonedDocument => {
+          clonedDocument.querySelectorAll<HTMLElement>(".print-only").forEach(candidate => {
+            candidate.style.display = "flex";
+          });
+        },
+        scale: Math.min(window.devicePixelRatio || 1, 2),
+        useCORS: true,
+      });
+      const pdf = new jsPDF({
+        compress: true,
+        format: "a4",
+        orientation: "portrait",
+        unit: "mm",
+      });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+      const contentWidth = pageWidth - margin * 2;
+      const contentHeight = pageHeight - margin * 2;
+      const imageHeight = (canvas.height * contentWidth) / canvas.width;
+      const image = canvas.toDataURL("image/jpeg", 0.94);
+      let remainingHeight = imageHeight;
+      let imageTop = margin;
+
+      pdf.addImage(image, "JPEG", margin, imageTop, contentWidth, imageHeight, undefined, "FAST");
+      remainingHeight -= contentHeight;
+      while (remainingHeight > 0) {
+        pdf.addPage();
+        imageTop -= contentHeight;
+        pdf.addImage(image, "JPEG", margin, imageTop, contentWidth, imageHeight, undefined, "FAST");
+        remainingHeight -= contentHeight;
+      }
+
+      const fileName = `${record.slug || "record"}-evidence-pack.pdf`
+        .replace(/[^\w\u4e00-\u9fff.-]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "psec-evidence-pack.pdf";
+      pdf.save(fileName);
+    } catch {
+      setDownloadFailed(true);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   return (
     <div className="evidence-sheet page-evidence py-8 print:py-0">
-      <div className="mx-auto max-w-[210mm] bg-white px-6 py-8 shadow-[var(--shadow-md)] md:px-12 md:py-12 print:max-w-none print:shadow-none">
+      <div
+        ref={evidenceSheetRef}
+        className="mx-auto max-w-[210mm] bg-white px-6 py-8 shadow-[var(--shadow-md)] md:px-12 md:py-12 print:max-w-none print:shadow-none"
+      >
         <div className="no-print mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
           <Link
             href={`/records/${record.slug}`}
@@ -145,13 +214,30 @@ export default function EvidenceSheet() {
           >
             <ArrowLeft size={15} aria-hidden="true" /> {t("backToRecord")}
           </Link>
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="focus-ring inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-white transition-transform active:scale-[.98]"
-          >
-            <Printer size={15} aria-hidden="true" /> {t("printSavePdf")}
-          </button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="focus-ring inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-white transition-transform active:scale-[.98]"
+            >
+              <Printer size={15} aria-hidden="true" /> {t("printEvidence")}
+            </button>
+            <button
+              type="button"
+              onClick={downloadEvidencePack}
+              disabled={isDownloading}
+              aria-busy={isDownloading}
+              className="focus-ring inline-flex items-center gap-2 rounded-full border border-primary/30 bg-white px-5 py-3 text-sm font-semibold text-primary transition-colors hover:bg-primary/5 disabled:cursor-wait disabled:opacity-60"
+            >
+              <Download size={15} aria-hidden="true" />
+              {isDownloading ? t("downloadingEvidencePdf") : t("downloadEvidencePdf")}
+            </button>
+          </div>
+          {downloadFailed && (
+            <p className="w-full text-right text-xs text-danger" role="alert">
+              {t("evidencePdfFailed")}
+            </p>
+          )}
         </div>
         <header className="border-b-2 border-ink pb-7">
           <div className="section-kicker">
