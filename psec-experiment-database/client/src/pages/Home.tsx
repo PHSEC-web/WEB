@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import { DISCIPLINES, type Discipline } from "@shared/classicExperiments";
 import { EmptyState, StatusBanner } from "@/components/PsecPrimitives";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { formatDate } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 
 const disciplineRoutes: Record<Discipline, string> = {
@@ -64,13 +65,6 @@ function useRevealMotion(pageRef: RefObject<HTMLDivElement | null>) {
     targets.forEach(target => observer.observe(target));
     return () => observer.disconnect();
   }, [pageRef]);
-}
-
-function formatDate(value: unknown, language: "zh" | "en") {
-  if (!value) return "";
-  const date = new Date(String(value));
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", { year: "numeric", month: "short", day: "numeric" }).format(date);
 }
 
 export default function Home() {

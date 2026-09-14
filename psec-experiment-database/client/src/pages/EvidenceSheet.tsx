@@ -2,6 +2,7 @@ import { ArrowLeft, Download, Printer } from "lucide-react";
 import { Link, useRoute } from "wouter";
 import { LoadingState } from "@/components/PsecPrimitives";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { formatDateTime } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 
 const text = (value?: string | null, fallback = "") =>
@@ -70,7 +71,7 @@ const outputKeys = {
 } as const;
 
 export default function EvidenceSheet() {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const [, params] = useRoute("/records/:slug/evidence");
   const slug = params?.slug || "";
   const evidence = trpc.records.evidence.useQuery(
@@ -173,7 +174,7 @@ export default function EvidenceSheet() {
             />
             <Meta
               label={t("generated")}
-              value={new Date(generatedAt).toLocaleString()}
+              value={formatDateTime(generatedAt, language)}
             />
           </div>
         </header>
@@ -248,7 +249,7 @@ export default function EvidenceSheet() {
                     v{revision.revisionNo} / {displayAction(revision.action)}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {new Date(revision.createdAt).toLocaleString()}
+                    {formatDateTime(revision.createdAt, language)}
                   </span>
                 </div>
                 <p className="mt-2 text-sm font-medium text-ink">

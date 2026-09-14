@@ -13,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   EmptyState,
   LoadingState,
@@ -21,6 +21,7 @@ import {
   StatusBanner,
 } from "@/components/PsecPrimitives";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { formatDateTime } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import {
   PROJECT_CATEGORIES,
@@ -75,9 +76,10 @@ const actionKeys = {
   appended_result: "actionAppendedResult",
 } as const;
 
-function isErrorNotice(message: string, errorPrefix: string) {
-  return message.startsWith("Error:") || message.startsWith(`${errorPrefix}:`);
-}
+type AdminNotice = {
+  tone: "success" | "error" | "info";
+  message: string;
+};
 
 const emptyEdit = {
   memberName: "",
@@ -101,6 +103,7 @@ type EditState = typeof emptyEdit;
 
 export default function AdminReview() {
   const { t } = useLanguage();
+  const [, navigate] = useLocation();
   const status = trpc.admin.status.useQuery();
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -108,12 +111,11 @@ export default function AdminReview() {
   const [fromFilter, setFromFilter] = useState("");
   const [toFilter, setToFilter] = useState("");
   const [openId, setOpenId] = useState<number | null>(null);
-  const [approveId, setApproveId] = useState<number | null>(null);
   const [rejectId, setRejectId] = useState<number | null>(null);
-  const [rejectComment, setRejectComment] = useState("");
+  const [rejectComments, setRejectComments] = useState<Record<number, string>>({});
   const [editId, setEditId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<EditState>(emptyEdit);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState<AdminNotice | null>(null);
   const utils = trpc.useUtils();
 
   const filters = useMemo(
@@ -128,7 +130,7 @@ export default function AdminReview() {
     enabled: status.data?.authenticated === true,
   });
   const history = trpc.admin.history.useQuery(
-    { submissionId: openId || 1 },
+    { submissionId: openId ?? -1 },
     { enabled: status.data?.authenticated === true && openId !== null }
   );
   const login = trpc.admin.login.useMutation({
@@ -141,34 +143,37 @@ export default function AdminReview() {
     onError: () => setLoginError(t("passwordNotRecognized")),
   });
   const logout = trpc.admin.logout.useMutation({
-    onSuccess: () => window.location.assign("/"),
+    onSuccess: () => navigate("/"),
   });
   const approve = trpc.admin.approve.useMutation({
     onSuccess: () => {
-      setApproveId(null);
-      setNotice(t("submissionApprovedNotice"));
+      setNotice({ tone: "success", message: t("submissionApprovedNotice") });
       void utils.admin.pending.invalidate();
       void utils.experiments.list.invalidate();
     },
-    onError: error => setNotice(`${t("errorPrefix")}: ${error.message}`),
+    onError: () => setNotice({ tone: "error", message: t("adminActionFailed") }),
   });
   const reject = trpc.admin.reject.useMutation({
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
       setRejectId(null);
-      setRejectComment("");
-      setNotice(t("submissionRejectedNotice"));
+      setRejectComments(current => {
+        const next = { ...current };
+        if (variables?.id !== undefined) delete next[variables.id];
+        return next;
+      });
+      setNotice({ tone: "success", message: t("submissionRejectedNotice") });
       void utils.admin.pending.invalidate();
     },
-    onError: error => setNotice(`${t("errorPrefix")}: ${error.message}`),
+    onError: () => setNotice({ tone: "error", message: t("adminActionFailed") }),
   });
   const edit = trpc.admin.edit.useMutation({
     onSuccess: () => {
       setEditId(null);
-      setNotice(t("editAppendedNotice"));
+      setNotice({ tone: "success", message: t("editAppendedNotice") });
       void utils.admin.pending.invalidate();
       void utils.admin.history.invalidate();
     },
-    onError: error => setNotice(`${t("errorPrefix")}: ${error.message}`),
+    onError: () => setNotice({ tone: "error", message: t("adminActionFailed") }),
   });
 
   const submitPassword = (event: FormEvent<HTMLFormElement>) => {
@@ -216,25 +221,25 @@ export default function AdminReview() {
 
   if (status.isLoading) {
     return (
-      <div
+      <main
         className="page-admin flex min-h-[60vh] items-center justify-center px-5"
         role="status"
       >
-        <span className="font-mono text-[10px] uppercase tracking-[.18em] text-muted-foreground">
+        <span className="meta-label">
           {t("checkingProtectedSession")}
         </span>
-      </div>
+      </main>
     );
   }
 
   if (!status.data?.authenticated) {
     return (
-      <div className="page-admin min-h-[60vh] px-5 py-16 lg:px-10 lg:py-24">
+      <main className="page-admin min-h-[60vh] px-5 py-16 lg:px-10 lg:py-24">
         <div className="surface-card mx-auto max-w-md p-6 md:p-8">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-secondary text-primary">
             <LockKeyhole size={20} aria-hidden="true" />
           </div>
-          <div className="mt-8 font-mono text-[10px] uppercase tracking-[.2em] text-primary">
+          <div className="mt-8 section-kicker">
             {t("adminRestrictedRoute")}
           </div>
           <h1 className="mt-3 font-display text-3xl tracking-[-.04em]">
@@ -266,7 +271,7 @@ export default function AdminReview() {
             <button
               type="submit"
               disabled={login.isPending}
-              className="focus-ring mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary font-mono text-[10px] uppercase tracking-[.14em] text-white transition-transform active:scale-[.98] disabled:opacity-60"
+              className="focus-ring mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-white transition-transform active:scale-[.98] disabled:opacity-60"
             >
               {login.isPending ? t("checking") : t("openQueue")} {" "}
               <LockKeyhole size={14} aria-hidden="true" />
@@ -274,31 +279,39 @@ export default function AdminReview() {
           </form>
           <Link
             href="/"
-            className="mt-6 block text-center font-mono text-[10px] uppercase tracking-[.14em] text-muted-foreground hover:text-primary"
+            className="focus-ring mt-6 block rounded-full text-center text-sm text-muted-foreground hover:text-primary"
           >
             {t("returnPublicHomepage")}
           </Link>
         </div>
-      </div>
+      </main>
     );
   }
 
   const items = (queue.data ?? []) as QueueItem[];
   return (
-    <div className="page-admin min-h-screen">
+    <main className="page-admin min-h-screen">
+      <div className="no-print border-b border-white/10 bg-navy text-white/75">
+        <div className="page-container flex min-h-12 items-center justify-between gap-4 text-sm">
+          <Link href="/" className="focus-ring rounded-full px-3 py-2 hover:text-signal">PSEC / {t("archive")}</Link>
+          <div className="flex items-center gap-3">
+            <span className="meta-label text-signal">{t("restrictedWorkspace")}</span>
+            <button
+              type="button"
+              onClick={() => logout.mutate()}
+              disabled={logout.isPending}
+              className="focus-ring inline-flex items-center gap-2 rounded-full border border-white/20 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[.15em] text-white/75 transition-colors hover:border-signal hover:text-signal disabled:opacity-50"
+            >
+              <LogOut size={13} aria-hidden="true" /> {t("logout")}
+            </button>
+          </div>
+        </div>
+      </div>
       <PageHero
         compact
         eyebrow={t("restrictedWorkspace")}
         title={t("adminReviewQueue")}
         description={t("adminQueueDescription")}
-        aside={
-          <button
-            onClick={() => logout.mutate()}
-            className="focus-ring flex items-center gap-2 rounded-full border border-white/20 px-4 py-3 font-mono text-[10px] uppercase tracking-[.15em] text-white/75 transition-colors hover:border-signal hover:text-signal"
-          >
-            <LogOut size={14} aria-hidden="true" /> {t("logout")}
-          </button>
-        }
       />
       <div className="page-container py-10 lg:py-14">
         <ExperimentAdminPanel />
@@ -306,31 +319,31 @@ export default function AdminReview() {
         {notice && (
           <div className="mb-6 flex items-start gap-3">
             <div className="min-w-0 flex-1">
-              <StatusBanner tone={isErrorNotice(notice, t("errorPrefix")) ? "error" : "success"}>
-                <span className="break-words">{notice}</span>
+              <StatusBanner tone={notice.tone}>
+                <span className="break-words">{notice.message}</span>
               </StatusBanner>
             </div>
-            <button className="focus-ring mt-2 shrink-0 rounded-full p-1 text-muted-foreground hover:text-primary" onClick={() => setNotice("")} aria-label={t("dismissNotice")}>
+            <button className="focus-ring mt-2 shrink-0 rounded-full p-1 text-muted-foreground hover:text-primary" onClick={() => setNotice(null)} aria-label={t("dismissNotice")}>
               <X size={15} aria-hidden="true" />
             </button>
           </div>
         )}
-        <section className="surface-card p-5 md:p-6">
+        <section className="admin-panel p-5 md:p-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-[.18em] text-primary">
+              <div className="section-kicker">
                 {t("pendingOnly")}
               </div>
               <h2 className="mt-2 font-display text-2xl">
                 {items.length} {t("recordsAwaitingDecision")}
               </h2>
             </div>
-            <div className="font-mono text-[9px] uppercase tracking-[.13em] text-muted-foreground">
-              <Clock3 size={14} className="mr-1 inline" /> {t("noAutomaticPublishing")}
+            <div className="meta-label text-muted-foreground">
+              <Clock3 aria-hidden="true" size={14} className="mr-1 inline" /> {t("noAutomaticPublishing")}
             </div>
           </div>
           <div className="mt-6 grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
-            <label className="font-mono text-[9px] uppercase tracking-[.13em] text-muted-foreground">
+            <label className="block text-sm font-medium text-ink">
               {t("academicCategory")}
               <select
                 value={disciplineFilter}
@@ -343,7 +356,7 @@ export default function AdminReview() {
                 ))}
               </select>
             </label>
-            <label className="font-mono text-[9px] uppercase tracking-[.13em] text-muted-foreground">
+            <label className="block text-sm font-medium text-ink">
               {t("submittedFrom")}
               <input
                 type="date"
@@ -352,7 +365,7 @@ export default function AdminReview() {
                 className="form-control mt-1"
               />
             </label>
-            <label className="font-mono text-[9px] uppercase tracking-[.13em] text-muted-foreground">
+            <label className="block text-sm font-medium text-ink">
               {t("submittedTo")}
               <input
                 type="date"
@@ -367,9 +380,9 @@ export default function AdminReview() {
                 setFromFilter("");
                 setToFilter("");
               }}
-              className="focus-ring self-end rounded-full border border-border bg-white/80 px-4 py-3 font-mono text-[10px] uppercase tracking-[.13em] text-muted-foreground transition-colors hover:text-primary"
+              className="focus-ring self-end rounded-full border border-border bg-white/80 px-4 py-3 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
             >
-              <RotateCcw size={13} className="mr-1 inline" /> {t("reset")}
+              <RotateCcw aria-hidden="true" size={13} className="mr-1 inline" /> {t("reset")}
             </button>
           </div>
         </section>
@@ -381,21 +394,19 @@ export default function AdminReview() {
             <EmptyState
               title={t("nothingWaitingQueue")}
               description={t("newSubmissionsAppear")}
-              icon={<Search size={22} />}
+              icon={<Search aria-hidden="true" size={22} />}
             />
           )}
           {items.map(item => (
-            <SubmissionCard
+              <SubmissionCard
               key={item.id}
               item={item}
               openId={openId}
               setOpenId={setOpenId}
-              approveId={approveId}
-              setApproveId={setApproveId}
               rejectId={rejectId}
               setRejectId={setRejectId}
-              rejectComment={rejectComment}
-              setRejectComment={setRejectComment}
+              rejectComment={rejectComments[item.id] ?? ""}
+              setRejectComment={value => setRejectComments(current => ({ ...current, [item.id]: value }))}
               editId={editId}
               setEditId={setEditId}
               editForm={editForm}
@@ -407,7 +418,7 @@ export default function AdminReview() {
                 approve.mutate({ id: item.id, discipline, category, publicationReviewConfirmed })
               }
               onReject={() =>
-                reject.mutate({ id: item.id, comment: rejectComment })
+                reject.mutate({ id: item.id, comment: rejectComments[item.id] ?? "" })
               }
               approving={approve.isPending}
               rejecting={reject.isPending}
@@ -416,40 +427,44 @@ export default function AdminReview() {
           ))}
         </section>
       </div>
-    </div>
+    </main>
   );
 }
 
 function EvidenceQueue() {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const utils = trpc.useUtils();
   const queue = trpc.admin.pendingEvidence.useQuery();
   const [rejectId, setRejectId] = useState<number | null>(null);
-  const [comment, setComment] = useState("");
-  const [message, setMessage] = useState("");
+  const [comments, setComments] = useState<Record<number, string>>({});
+  const [message, setMessage] = useState<AdminNotice | null>(null);
   const approve = trpc.admin.approveEvidence.useMutation({
     onSuccess: () => {
-      setMessage(t("evidenceApprovedNotice"));
+      setMessage({ tone: "success", message: t("evidenceApprovedNotice") });
       void utils.admin.pendingEvidence.invalidate();
       void utils.experiments.executionRecords.invalidate();
       void utils.experiments.attachments.invalidate();
     },
-    onError: error => setMessage(`${t("errorPrefix")}: ${error.message}`),
+    onError: () => setMessage({ tone: "error", message: t("adminActionFailed") }),
   });
   const reject = trpc.admin.rejectEvidence.useMutation({
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
       setRejectId(null);
-      setComment("");
-      setMessage(t("evidenceRejectedNotice"));
+      setComments(current => {
+        const next = { ...current };
+        if (variables?.id !== undefined) delete next[variables.id];
+        return next;
+      });
+      setMessage({ tone: "success", message: t("evidenceRejectedNotice") });
       void utils.admin.pendingEvidence.invalidate();
     },
-    onError: error => setMessage(`${t("errorPrefix")}: ${error.message}`),
+    onError: () => setMessage({ tone: "error", message: t("adminActionFailed") }),
   });
   return (
-    <section className="mb-7 border border-[#9fb0c4] bg-[#eef4f9] p-5 md:p-6">
+    <section className="admin-panel admin-panel-info mb-7 p-5 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="font-mono text-[10px] uppercase tracking-[.18em] text-primary">
+          <div className="section-kicker">
             {t("evidenceSupplementsQueue")}
           </div>
           <h2 className="mt-2 font-display text-2xl">
@@ -459,36 +474,31 @@ function EvidenceQueue() {
             {t("evidenceQueueDescription")}
           </p>
         </div>
-        <div className="font-mono text-[10px] uppercase tracking-[.13em] text-primary">
+        <div className="meta-label">
           {queue.data?.length ?? 0} {t("pending")}
         </div>
       </div>
       {message && (
-        <div
-          role={isErrorNotice(message, t("errorPrefix")) ? "alert" : "status"}
-          className={`mt-4 border px-4 py-3 text-sm ${isErrorNotice(message, t("errorPrefix")) ? "border-[#d9a7a7] bg-[#fff1f1] text-[#8a2c2c]" : "border-[#b8ccb5] bg-[#edf5eb] text-[#3f7b44]"}`}
-        >
-          {message}
-        </div>
+        <div className="mt-4"><StatusBanner tone={message.tone}>{message.message}</StatusBanner></div>
       )}
       <div className="mt-5 space-y-3">
         {queue.isLoading ? (
-          <div className="font-mono text-[10px] uppercase tracking-[.14em] text-muted-foreground">
+          <div className="meta-label text-muted-foreground">
             {t("loadingEvidenceSupplements")}
           </div>
         ) : queue.data?.length === 0 ? (
-          <div className="border border-dashed border-[#9fb0c4] bg-white p-5 text-sm text-muted-foreground">
+          <div className="admin-subpanel admin-subpanel-info border-dashed p-5 text-sm text-muted-foreground">
             {t("noEvidenceSupplements")}
           </div>
         ) : (
           queue.data?.map(item => (
             <article
               key={item.id}
-              className="border border-[#c7d4e1] bg-white p-4"
+              className="admin-subpanel p-4"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <span className="inline-flex bg-[#e7eef6] px-2 py-1 font-mono text-[9px] uppercase tracking-[.13em] text-primary">
+                  <span className="meta-label inline-flex rounded-full bg-secondary px-2.5 py-1">
                     [{t("evidenceSupplementTag")}]
                   </span>
                   <h3 className="mt-2 font-display text-xl">
@@ -497,14 +507,14 @@ function EvidenceQueue() {
                   <p className="mt-1 text-xs text-muted-foreground">
                     {t("submitter")}:{" "}
                     <strong className="text-ink">{item.submitterName}</strong> ·{" "}
-                    {new Date(item.submittedAt).toLocaleString()}
+                    {formatDateTime(item.submittedAt, language)}
                   </p>
                 </div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => approve.mutate({ id: item.id })}
                     disabled={approve.isPending || !item.experimentTitle}
-                    className="focus-ring bg-[#3f7b44] px-3 py-2 font-mono text-[10px] uppercase tracking-[.11em] text-white disabled:opacity-40"
+                    className="focus-ring rounded-full bg-success px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
                   >
                     {approve.isPending ? t("attaching") : t("approveAttach")}
                   </button>
@@ -512,7 +522,7 @@ function EvidenceQueue() {
                     onClick={() =>
                       setRejectId(rejectId === item.id ? null : item.id)
                     }
-                    className="focus-ring border border-[#c58e8e] bg-[#fff5f5] px-3 py-2 font-mono text-[10px] uppercase tracking-[.11em] text-[#8a2c2c]"
+                    className="focus-ring rounded-full border border-danger/30 bg-danger-surface px-3 py-2 text-sm font-semibold text-danger"
                   >
                     {t("reject")}
                   </button>
@@ -536,28 +546,29 @@ function EvidenceQueue() {
                       href={file.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-2 border border-[#d9d7d1] px-2 py-1 text-xs text-primary underline"
+                      className="inline-flex items-center gap-2 rounded-full border border-border bg-white/65 px-2.5 py-1 text-xs text-primary underline transition-colors hover:border-primary"
                     >
-                      <Download size={12} /> {file.fileName}
+                      <Download aria-hidden="true" size={12} /> {file.fileName}
                     </a>
                   ))}
                 </div>
               )}
               {rejectId === item.id && (
-                <div className="mt-4 border-t border-[#ead0d0] pt-4">
-                  <label className="block text-sm text-[#8a2c2c]">
-                    {t("rejectionComment")}
+                <div className="admin-subpanel admin-subpanel-danger mt-4 p-4">
+                  <label htmlFor={`evidence-rejection-${item.id}`} className="block text-sm font-medium text-danger">
+                    <span>{t("rejectionComment")}</span>
                     <textarea
-                      value={comment}
-                      onChange={event => setComment(event.target.value)}
+                      id={`evidence-rejection-${item.id}`}
+                      value={comments[item.id] ?? ""}
+                      onChange={event => setComments(current => ({ ...current, [item.id]: event.target.value }))}
                       className="form-control mt-1 min-h-24 resize-y"
                       placeholder={t("rejectionPlaceholder")}
                     />
                   </label>
                   <button
-                    onClick={() => reject.mutate({ id: item.id, comment })}
-                    disabled={!comment.trim() || reject.isPending}
-                    className="focus-ring mt-3 bg-[#8a2c2c] px-3 py-2 font-mono text-[10px] uppercase tracking-[.11em] text-white"
+                    onClick={() => reject.mutate({ id: item.id, comment: comments[item.id] ?? "" })}
+                    disabled={!(comments[item.id] ?? "").trim() || reject.isPending}
+                    className="focus-ring mt-3 rounded-full bg-danger px-3 py-2 text-sm font-semibold text-white"
                   >
                     {reject.isPending ? t("saving") : t("confirmRejection")}
                   </button>
@@ -613,8 +624,6 @@ function SubmissionCard({
   item,
   openId,
   setOpenId,
-  approveId,
-  setApproveId,
   rejectId,
   setRejectId,
   rejectComment,
@@ -635,8 +644,6 @@ function SubmissionCard({
   item: QueueItem;
   openId: number | null;
   setOpenId: (id: number | null) => void;
-  approveId: number | null;
-  setApproveId: (id: number | null) => void;
   rejectId: number | null;
   setRejectId: (id: number | null) => void;
   rejectComment: string;
@@ -654,7 +661,7 @@ function SubmissionCard({
   rejecting: boolean;
   editing: boolean;
 }) {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const [approveDiscipline, setApproveDiscipline] = useState(
     item.discipline || "Social Psychology"
   );
@@ -666,7 +673,7 @@ function SubmissionCard({
   const historyForItem = history.filter(
     record => record.submissionId === item.id
   );
-  const submittedAt = new Date(item.submittedAt).toLocaleString();
+  const submittedAt = formatDateTime(item.submittedAt, language);
   const display = (value: string | null) => value?.trim() || t("blankValue");
   const displayDiscipline = (value?: string | null) =>
     value && value in disciplineKeys
@@ -690,12 +697,15 @@ function SubmissionCard({
       : value || t("notSet");
 
   return (
-    <article className="border border-border bg-card">
+    <article className="admin-subpanel overflow-hidden">
       <button
+        type="button"
         onClick={() => setOpenId(expanded ? null : item.id)}
+        aria-expanded={expanded}
+        aria-controls={`submission-${item.id}-details`}
         className="focus-ring flex w-full items-start gap-4 p-5 text-left md:p-6"
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center bg-[#f4e7c4] font-mono text-[10px] text-[#856311]">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warning-surface font-mono text-[10px] text-warning">
           #{item.id}
         </span>
         <span className="min-w-0 flex-1">
@@ -716,11 +726,12 @@ function SubmissionCard({
         </span>
         <ChevronDown
           size={18}
+          aria-hidden="true"
           className={`mt-1 shrink-0 text-muted-foreground transition-transform ${expanded ? "rotate-180 text-primary" : ""}`}
         />
       </button>
       {expanded && (
-        <div className="border-t border-border bg-[#f7f5ef] p-5 md:p-7">
+        <div id={`submission-${item.id}-details`} className="border-t border-border bg-white/35 p-5 md:p-7">
           <div className="grid gap-7 lg:grid-cols-2">
             <div className="space-y-5">
               <RecordField label={t("submitterName")} value={item.memberName} />
@@ -767,7 +778,7 @@ function SubmissionCard({
                     rel="noreferrer"
                     className="mt-2 inline-flex items-center gap-2 text-sm text-primary underline"
                   >
-                    <Download size={14} />{" "}
+                    <Download aria-hidden="true" size={14} />{" "}
                     {item.attachmentName || t("previewDownloadAttachment")}
                   </a>
                 ) : (
@@ -777,7 +788,7 @@ function SubmissionCard({
                 )}
               </div>
               {(item.attachments ?? []).length > 0 && (
-                <div className="mt-6 border-t border-[#d9d7d1] pt-5">
+                <div className="mt-6 border-t border-border pt-5">
                   <div className="font-mono text-[9px] uppercase tracking-[.15em] text-primary">
                     {t("uploadedExperimentEvidence")}
                   </div>
@@ -788,9 +799,9 @@ function SubmissionCard({
                         href={file.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex items-center gap-2 border border-[#d9d7d1] bg-white p-3 text-sm text-primary underline"
+                        className="flex items-center gap-2 border border-border bg-white/70 p-3 text-sm text-primary underline transition-colors hover:border-primary"
                       >
-                        <Download size={14} />
+                        <Download aria-hidden="true" size={14} />
                         <span className="min-w-0 flex-1 truncate">
                           {file.fileName}
                         </span>
@@ -804,9 +815,9 @@ function SubmissionCard({
               )}
             </div>
           </div>
-          <div className="mt-8 border-t border-[#d9d7d1] pt-6">
+          <div className="mt-8 border-t border-border pt-6">
             <div className="mb-4 flex flex-wrap gap-4">
-              <label className="text-xs text-ink">
+              <label className="block text-xs text-ink">
                 {t("disciplineLabel")}
                 <select
                   value={approveDiscipline}
@@ -820,7 +831,7 @@ function SubmissionCard({
                   ))}
                 </select>
               </label>
-              <label className="text-xs text-ink">
+              <label className="block text-xs text-ink">
                 {t("projectFolder")}
                 <select
                   value={approveFolder}
@@ -839,38 +850,39 @@ function SubmissionCard({
             </div>
             <div className="flex flex-wrap gap-3">
               <p className="w-full text-xs leading-5 text-muted-foreground">{t("adminPublicationChecklist")}</p>
-              <label className="flex w-full items-start gap-3 border border-[#c7d4e1] bg-white p-3 text-xs leading-5 text-muted-foreground">
+              <label className="admin-subpanel admin-subpanel-info flex w-full items-start gap-3 p-3 text-xs leading-5 text-muted-foreground">
                 <input type="checkbox" checked={publicationReviewConfirmed} onChange={event => setPublicationReviewConfirmed(event.target.checked)} className="mt-1" />
                 <span>{t("confirmPublicationReview")}</span>
               </label>
               <button
                 onClick={() => onApprove(approveDiscipline, approveFolder, true)}
                 disabled={approving || !publicationReviewConfirmed}
-                className="focus-ring flex items-center gap-2 bg-[#3f7b44] px-4 py-3 font-mono text-[10px] uppercase tracking-[.12em] text-white disabled:opacity-50"
+                className="focus-ring flex items-center gap-2 rounded-full bg-success px-4 py-3 font-mono text-[10px] uppercase tracking-[.12em] text-white disabled:opacity-50"
               >
-                <Check size={14} />{" "}
+                <Check aria-hidden="true" size={14} />{" "}
                 {approving ? t("publishing") : t("approvePublish")}
               </button>
               <button
                 onClick={() =>
                   setRejectId(rejectId === item.id ? null : item.id)
                 }
-                className="focus-ring flex items-center gap-2 border border-[#c58e8e] bg-[#fff5f5] px-4 py-3 font-mono text-[10px] uppercase tracking-[.12em] text-[#8a2c2c]"
+                className="focus-ring flex items-center gap-2 rounded-full border border-danger/30 bg-danger-surface px-4 py-3 font-mono text-[10px] uppercase tracking-[.12em] text-danger"
               >
-                <X size={14} /> {t("rejectSendBack")}
+                <X aria-hidden="true" size={14} /> {t("rejectSendBack")}
               </button>
               <button
                 onClick={() => beginEdit(item)}
                 className="focus-ring flex items-center gap-2 border border-border bg-white px-4 py-3 font-mono text-[10px] uppercase tracking-[.12em] text-ink"
               >
-                <Edit3 size={14} /> {t("edit")}
+                <Edit3 aria-hidden="true" size={14} /> {t("edit")}
               </button>
             </div>
             {rejectId === item.id && (
-              <div className="mt-4 border border-[#d9a7a7] bg-[#fff1f1] p-4">
-                <label className="font-mono text-[9px] uppercase tracking-[.13em] text-[#8a2c2c]">
-                  {t("permanentRejectionComment")}
+              <div className="admin-subpanel admin-subpanel-danger mt-4 p-4">
+                <label htmlFor={`submission-rejection-${item.id}`} className="font-mono text-[9px] uppercase tracking-[.13em] text-danger">
+                  <span>{t("permanentRejectionComment")}</span>
                   <textarea
+                    id={`submission-rejection-${item.id}`}
                     value={rejectComment}
                     onChange={event => setRejectComment(event.target.value)}
                     className="form-control mt-1 min-h-24 resize-y"
@@ -880,7 +892,7 @@ function SubmissionCard({
                 <button
                   onClick={onReject}
                   disabled={!rejectComment.trim() || rejecting}
-                  className="focus-ring mt-3 bg-[#8a2c2c] px-4 py-3 font-mono text-[10px] uppercase tracking-[.12em] text-white"
+                  className="focus-ring mt-3 rounded-full bg-danger px-4 py-3 font-mono text-[10px] uppercase tracking-[.12em] text-white"
                 >
                   {rejecting ? t("saving") : t("confirmRejection")}
                 </button>
@@ -889,10 +901,10 @@ function SubmissionCard({
             {editId === item.id && (
               <form
                 onSubmit={submitEdit}
-                className="mt-4 border border-[#9fb0c4] bg-[#eef4f9] p-4"
+                className="admin-subpanel admin-subpanel-info mt-4 p-4"
               >
                 <div className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-[.15em] text-primary">
-                  <Edit3 size={14} /> {t("fullFormEditingOriginalPreserved")}
+                  <Edit3 aria-hidden="true" size={14} /> {t("fullFormEditingOriginalPreserved")}
                 </div>
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
                   <AdminField
@@ -968,8 +980,8 @@ function SubmissionCard({
                     onChange={value => setEditValue("expectedOutput", value)}
                   />
                 </div>
-                <label className="focus-ring mt-4 flex cursor-pointer items-center gap-3 border border-dashed border-[#9fb0c4] bg-white px-4 py-3 text-sm text-muted-foreground hover:border-primary hover:text-primary">
-                  <FileUp size={16} />
+                <label className="admin-file-picker focus-ring mt-4 flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-border bg-white/75 px-4 py-3 text-sm text-muted-foreground hover:border-primary hover:text-primary">
+                  <FileUp aria-hidden="true" size={16} />
                   <span>
                     {editForm.attachmentData
                       ? `${t("replacementFile")}: ${editForm.attachmentName}`
@@ -1018,9 +1030,9 @@ function SubmissionCard({
                 </div>
               </form>
             )}
-            <div className="mt-6 border-t border-[#d9d7d1] pt-5">
+                <div className="mt-6 border-t border-border pt-5">
               <div className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-[.15em] text-primary">
-                <History size={13} /> {t("fullIterationHistory")}
+                <History aria-hidden="true" size={13} /> {t("fullIterationHistory")}
               </div>
               {historyForItem.length === 0 ? (
                 <p className="mt-3 text-xs text-muted-foreground">
@@ -1031,12 +1043,12 @@ function SubmissionCard({
                   {historyForItem.map(record => (
                     <div
                       key={record.id}
-                      className="border border-[#d9d7d1] bg-white p-3"
+                      className="admin-subpanel p-3"
                     >
                       <div className="flex justify-between gap-3 font-mono text-[9px] uppercase tracking-[.12em] text-primary">
                         <span>{displayAction(record.action)}</span>
                         <span>
-                          {new Date(record.createdAt).toLocaleString()}
+                          {formatDateTime(record.createdAt, language)}
                         </span>
                       </div>
                       <p className="mt-2 text-xs leading-5 text-muted-foreground">
@@ -1046,7 +1058,7 @@ function SubmissionCard({
                         <summary className="cursor-pointer font-mono text-[9px] uppercase tracking-[.12em] text-primary">
                           {t("viewRetainedSnapshot")}
                         </summary>
-                        <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap bg-[#f5f2eb] p-3 text-[10px] leading-5 text-ink">
+                        <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-3 text-[10px] leading-5 text-ink">
                           {formatSnapshot(record.snapshotJson)}
                         </pre>
                       </details>
@@ -1066,25 +1078,27 @@ function ExperimentAdminPanel() {
   const { t } = useLanguage();
   const utils = trpc.useUtils();
   const experiments = trpc.experiments.list.useQuery();
-  const remove = trpc.admin.deleteExperiment.useMutation({
-    onSuccess: item => {
-      setSelectedId(null);
-      setConfirmTitle("");
-      setMessage(
-        item
-          ? `${t("hiddenRecordPrefix")} #${item.id}: ${item.title}`
-          : t("recordHidden")
-      );
-      void utils.experiments.list.invalidate();
-    },
-    onError: error => setMessage(`${t("errorPrefix")}: ${error.message}`),
-  });
   const [search, setSearch] = useState("");
   const [disciplineFilter, setDisciplineFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [confirmTitle, setConfirmTitle] = useState("");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<AdminNotice | null>(null);
+  const remove = trpc.admin.deleteExperiment.useMutation({
+    onSuccess: item => {
+      setSelectedId(null);
+      setConfirmTitle("");
+      setMessage({
+        tone: "success",
+        message: item
+          ? `${t("hiddenRecordPrefix")} #${item.id}: ${item.title}`
+          : t("recordHidden"),
+      });
+      void utils.experiments.list.invalidate();
+    },
+    onError: error =>
+      setMessage({ tone: "error", message: `${t("errorPrefix")}: ${error.message}` }),
+  });
   const filtered = (experiments.data ?? []).filter(item => {
     const matchesSearch = [
       String(item.id),
@@ -1103,10 +1117,10 @@ function ExperimentAdminPanel() {
   });
 
   return (
-    <section className="mb-7 border border-[#d9a7a7] bg-[#fffafa] p-5 md:p-6">
+    <section className="admin-panel admin-panel-danger mb-7 p-5 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="font-mono text-[10px] uppercase tracking-[.18em] text-[#8a2c2c]">
+          <div className="section-kicker text-danger">
             {t("dangerZonePublishedExperiments")}
           </div>
         <h2 className="mt-2 font-display text-2xl">{t("managePublicRecords")}</h2>
@@ -1114,8 +1128,8 @@ function ExperimentAdminPanel() {
             {t("hidePublicRecordDescription")}
           </p>
         </div>
-        <div className="font-mono text-[10px] uppercase tracking-[.13em] text-muted-foreground">
-          {experiments.data?.length ?? 0} records
+        <div className="meta-label text-muted-foreground">
+          {experiments.data?.length ?? 0} {t("records")}
         </div>
       </div>
       <label className="mt-5 block">
@@ -1166,11 +1180,8 @@ function ExperimentAdminPanel() {
         </label>
       </div>
       {message && (
-        <div
-          role={isErrorNotice(message, t("errorPrefix")) ? "alert" : "status"}
-          className={`mt-4 border px-4 py-3 text-sm ${isErrorNotice(message, t("errorPrefix")) ? "border-[#d9a7a7] bg-[#fff1f1] text-[#8a2c2c]" : "border-[#b8ccb5] bg-[#edf5eb] text-[#3f7b44]"}`}
-        >
-          {message}
+        <div className="mt-4">
+          <StatusBanner tone={message.tone}>{message.message}</StatusBanner>
         </div>
       )}
       <div className="mt-5 space-y-3">
@@ -1182,12 +1193,12 @@ function ExperimentAdminPanel() {
             {t("loadingPublicRecords")}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="border border-dashed border-[#d9a7a7] p-5 text-sm text-muted-foreground">
+          <div className="admin-subpanel admin-subpanel-danger border-dashed p-5 text-sm text-muted-foreground">
             {t("noPublicExperimentMatches")}
           </div>
         ) : (
           filtered.map(item => (
-            <div key={item.id} className="border border-border bg-white p-4">
+            <div key={item.id} className="admin-subpanel p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="font-mono text-[9px] uppercase tracking-[.14em] text-primary">
@@ -1208,7 +1219,7 @@ function ExperimentAdminPanel() {
                     setSelectedId(selectedId === item.id ? null : item.id);
                     setConfirmTitle("");
                   }}
-                  className="focus-ring border border-[#c58e8e] px-3 py-2 font-mono text-[10px] uppercase tracking-[.13em] text-[#8a2c2c] hover:bg-[#fff1f1]"
+                  className="focus-ring rounded-full border border-danger/30 bg-danger-surface px-3 py-2 font-mono text-[10px] uppercase tracking-[.13em] text-danger transition-colors hover:border-danger"
                 >
                   {selectedId === item.id ? t("cancel") : t("hide")}
                 </button>
@@ -1217,21 +1228,25 @@ function ExperimentAdminPanel() {
                 <ExperimentMediaUploader experimentId={item.id} />
               )}
               {selectedId === item.id && (
-                <div className="mt-4 border-t border-[#ead0d0] pt-4">
-                  <label className="block text-sm text-[#8a2c2c]">
-                    {t("typeExactTitle")} {" "}
+                <div className="mt-4 border-t border-danger/20 pt-4">
+                  <label htmlFor={`hide-confirm-title-${item.id}`} className="block text-sm text-danger">
+                    <span>{t("adminConfirmHideTitle")}</span>
+                    <span id={`hide-confirm-help-${item.id}`} className="mt-1 block text-xs leading-5 text-muted-foreground">
+                      {t("confirmExactTitleHint")}
+                    </span>
                     <input
+                      id={`hide-confirm-title-${item.id}`}
                       autoFocus
                       value={confirmTitle}
                       onChange={event => setConfirmTitle(event.target.value)}
                       className="form-control mt-1"
-                      placeholder={item.title}
+                      aria-describedby={`hide-confirm-help-${item.id}`}
                     />
                   </label>
                   <button
                     disabled={confirmTitle !== item.title || remove.isPending}
                     onClick={() => remove.mutate({ id: item.id, confirmTitle })}
-                    className="focus-ring mt-3 bg-[#8a2c2c] px-4 py-3 font-mono text-[10px] uppercase tracking-[.13em] text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    className="focus-ring mt-3 rounded-full bg-danger px-4 py-3 font-mono text-[10px] uppercase tracking-[.13em] text-white disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {remove.isPending ? t("hiding") : t("hideThisRecord")}
                   </button>
@@ -1248,17 +1263,19 @@ function ExperimentAdminPanel() {
 function ExperimentMediaUploader({ experimentId }: { experimentId: number }) {
   const { t } = useLanguage();
   const upload = trpc.admin.uploadExperimentAttachments.useMutation();
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<AdminNotice | null>(null);
   const [preparing, setPreparing] = useState(false);
   const handleFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
     const files = Array.from(event.target.files ?? []);
     if (!files.length) return;
     if (files.length > 8) {
-      setMessage(t("chooseNoMoreEightFiles"));
+      setMessage({ tone: "error", message: t("chooseNoMoreEightFiles") });
+      input.value = "";
       return;
     }
     setPreparing(true);
-    setMessage("");
+    setMessage(null);
     Promise.all(
       files.map(
         file =>
@@ -1295,34 +1312,33 @@ function ExperimentMediaUploader({ experimentId }: { experimentId: number }) {
           })
       )
     )
-      .then(prepared =>
-        upload.mutate(
-          { experimentId, files: prepared },
-          {
-            onSuccess: result =>
-              setMessage(
-                `${result?.count ?? prepared.length} ${t("filesAddedToProject")}`
-              ),
-            onError: error => setMessage(`${t("errorPrefix")}: ${error.message}`),
-          }
-        )
+      .then(prepared => upload.mutateAsync({ experimentId, files: prepared }).then(result => {
+        setMessage({
+          tone: "success",
+          message: `${result?.count ?? prepared.length} ${t("filesAddedToProject")}`,
+        });
+      }))
+      .catch((error: unknown) =>
+        setMessage({
+          tone: "error",
+          message: `${t("errorPrefix")}: ${error instanceof Error ? error.message : String(error)}`,
+        })
       )
-      .catch((error: Error) => setMessage(`${t("errorPrefix")}: ${error.message}`))
       .finally(() => {
         setPreparing(false);
-        event.target.value = "";
+        input.value = "";
       });
   };
   return (
-    <div className="mt-4 border border-[#b8ccb5] bg-[#edf5eb] p-4">
-      <div className="font-mono text-[9px] uppercase tracking-[.15em] text-[#3f7b44]">
+    <div className="admin-panel admin-panel-success mt-4 p-4">
+      <div className="section-kicker text-success">
         {t("completedProjectEvidence")}
       </div>
       <p className="mt-2 text-xs leading-5 text-muted-foreground">
         {t("completedProjectEvidenceDescription")}
       </p>
-      <label className="focus-ring mt-3 flex cursor-pointer items-center gap-2 border border-dashed border-[#7aa67d] bg-white px-3 py-3 font-mono text-[10px] uppercase tracking-[.12em] text-[#3f7b44] hover:border-primary">
-        <FileUp size={14} />{" "}
+      <label className="admin-file-picker focus-ring mt-3 flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-success bg-white/75 px-3 py-3 font-mono text-[10px] uppercase tracking-[.12em] text-success hover:border-primary">
+        <FileUp aria-hidden="true" size={14} />{" "}
         {preparing || upload.isPending ? t("uploading") : t("uploadPhotosData")}
         <input
           type="file"
@@ -1333,11 +1349,8 @@ function ExperimentMediaUploader({ experimentId }: { experimentId: number }) {
         />
       </label>
       {message && (
-        <div
-          role={isErrorNotice(message, t("errorPrefix")) ? "alert" : "status"}
-          className={`mt-3 text-xs ${isErrorNotice(message, t("errorPrefix")) ? "text-[#8a2c2c]" : "text-[#3f7b44]"}`}
-        >
-          {message}
+        <div className="mt-3">
+          <StatusBanner tone={message.tone}>{message.message}</StatusBanner>
         </div>
       )}
     </div>

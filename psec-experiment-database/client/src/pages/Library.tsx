@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import { type Discipline } from "@shared/classicExperiments";
 import { EmptyState, LoadingState, PageHero, SectionHeader, StatusBanner } from "@/components/PsecPrimitives";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { formatDate as displayDate } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 
 type LibraryProps = { discipline: Discipline };
@@ -40,13 +41,6 @@ function updateQuery(next: { view: "reference" | "project"; stage: string; query
   next.stage ? params.set("stage", next.stage) : params.delete("stage");
   next.query ? params.set("q", next.query) : params.delete("q");
   window.history.replaceState(null, "", window.location.pathname + "?" + params.toString() + window.location.hash);
-}
-
-function displayDate(value: unknown, language: "zh" | "en") {
-  if (!value) return "";
-  const date = new Date(String(value));
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", { year: "numeric", month: "short", day: "numeric" }).format(date);
 }
 
 export default function Library({ discipline }: LibraryProps) {

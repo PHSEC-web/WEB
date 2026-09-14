@@ -2,6 +2,7 @@ import { ArrowLeft, Download, FileText, History, Printer, ShieldCheck } from "lu
 import { Link, useRoute } from "wouter";
 import { EmptyState, LoadingState } from "@/components/PsecPrimitives";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { formatDate } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 
 const disciplineKeys = {
@@ -19,13 +20,6 @@ const outputKeys = { "IB Extended Essay": "ibExtendedEssay", "Academic competiti
 const fieldLabelKeys = { title: "experimentProjectTitle", abstract: "oneSentenceSummary", theoreticalBasis: "theoreticalBasis", historicalBackground: "creatorHistory", hypothesis: "researchHypothesis", procedure: "procedureDataRecord", materials: "materialsEnvironment", expectedOutput: "expectedOutput", lifecycle: "researchStage", results: "resultsConclusions", limitations: "limitationsReflection", nextQuestion: "nextQuestion", ethicsNotes: "ethicsConsentNotes", attachments: "publicAttachments" } as const;
 
 const display = (value?: string | null, fallback = "") => value?.trim() || fallback;
-
-function formatDate(value: unknown, language: "zh" | "en") {
-  if (!value) return "";
-  const date = new Date(String(value));
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", { year: "numeric", month: "short", day: "numeric" }).format(date);
-}
 
 export default function RecordDetail() {
   const { language, t } = useLanguage();

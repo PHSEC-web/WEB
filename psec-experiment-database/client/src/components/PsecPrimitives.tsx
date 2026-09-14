@@ -61,7 +61,7 @@ export function SectionHeader({ eyebrow, title, description, action }: { eyebrow
 
 export function StatusBanner({ tone, children, title }: { tone: "success" | "error" | "info"; children: ReactNode; title?: string }) {
   const Icon = tone === "success" ? CheckCircle2 : tone === "error" ? AlertCircle : Info;
-  return <div className={`status-banner status-banner-${tone}`} role={tone === "error" ? "alert" : "status"}><Icon size={17} className="mt-0.5 shrink-0" /><div>{title && <strong className="mr-1 font-semibold">{title}</strong>}{children}</div></div>;
+  return <div className={`status-banner status-banner-${tone}`} role={tone === "error" ? "alert" : "status"}><Icon aria-hidden="true" size={17} className="mt-0.5 shrink-0" /><div>{title && <strong className="mr-1 font-semibold">{title}</strong>}{children}</div></div>;
 }
 
 export function LoadingState({ label }: { label: string }) {
@@ -73,7 +73,7 @@ export function EmptyState({ title, description, icon, action }: { title: string
 }
 
 export function FormSection({ number, title, description, children, tone = "default" }: { number?: string; title: ReactNode; description?: ReactNode; children: ReactNode; tone?: "default" | "quiet" }) {
-  return <section className={`rounded-[var(--radius-card)] border p-5 md:p-7 ${tone === "quiet" ? "border-[#bfd2eb] bg-[#f1f6fc]" : "border-border bg-card"}`}><div className="flex items-start gap-4 border-b border-border pb-5"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-secondary font-mono text-xs text-primary">{number}</div><div className="min-w-0"><h2 className="font-display text-xl">{title}</h2>{description && <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>}</div></div><div className="mt-6">{children}</div></section>;
+  return <section className={`rounded-[var(--radius-card)] border p-5 md:p-7 ${tone === "quiet" ? "border-[#bfd2eb] bg-[#f1f6fc]" : "border-border panel-glass"}`}><div className="flex items-start gap-4 border-b border-border pb-5"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-secondary font-mono text-xs text-primary">{number}</div><div className="min-w-0"><h2 className="font-display text-xl">{title}</h2>{description && <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>}</div></div><div className="mt-6">{children}</div></section>;
 }
 
 export function PsecField({ label, hint, required, children, error }: { label: string; hint?: string; required?: boolean; children: ReactNode; error?: string }) {
