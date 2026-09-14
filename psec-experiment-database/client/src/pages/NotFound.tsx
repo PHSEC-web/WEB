@@ -1,5 +1,6 @@
 import { AlertCircle, BookOpen, Home, Search } from "lucide-react";
 import { Link } from "wouter";
+import { ArchiveSearchLink } from "@/components/PsecPrimitives";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function NotFound() {
@@ -26,10 +27,7 @@ export default function NotFound() {
             {t("pageNotFoundDescription")}
           </p>
 
-          <div
-            id="not-found-button-group"
-            className="mt-8 flex flex-wrap items-center justify-center gap-3"
-          >
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link
               href="/"
               className="focus-ring inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-white transition-transform active:scale-[.98]"
@@ -46,13 +44,12 @@ export default function NotFound() {
             </Link>
           </div>
 
-          <Link
-            href="/#archive-search"
+          <ArchiveSearchLink
             className="focus-ring mt-5 inline-flex items-center gap-2 rounded-full text-sm font-medium text-primary transition-opacity hover:opacity-80"
           >
             <Search size={15} aria-hidden="true" />
             {t("search")}
-          </Link>
+          </ArchiveSearchLink>
         </div>
       </div>
     </div>

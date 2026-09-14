@@ -1,6 +1,6 @@
 import { AlertCircle, CheckCircle2, Info, LoaderCircle } from "lucide-react";
 import type { ReactNode } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 
 type PageHeroProps = {
   eyebrow?: string;
@@ -26,6 +26,24 @@ export function PageHero({ eyebrow, title, description, backHref, backLabel, asi
       </div>
     </section>
   );
+}
+
+export function ArchiveSearchLink({ children, className, onClick }: { children: ReactNode; className?: string; onClick?: () => void }) {
+  const [location, navigate] = useLocation();
+
+  const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    onClick?.();
+    if (location === "/") {
+      const target = document.getElementById("archive-search");
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.history.replaceState(null, "", "/#archive-search");
+      return;
+    }
+    navigate("/#archive-search");
+  };
+
+  return <a href="/#archive-search" onClick={handleClick} className={className}>{children}</a>;
 }
 
 export function SectionHeader({ eyebrow, title, description, action }: { eyebrow?: string; title: ReactNode; description?: ReactNode; action?: ReactNode }) {

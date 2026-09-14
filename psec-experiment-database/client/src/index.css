@@ -437,12 +437,20 @@
     background: #fff !important;
   }
 
-  body > #root > *:not(.evidence-sheet) {
+  body > #root > * {
     display: none !important;
+  }
+
+  body > #root > .evidence-layout {
+    display: block !important;
   }
 
   .no-print {
     display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
   }
 
   .evidence-sheet {

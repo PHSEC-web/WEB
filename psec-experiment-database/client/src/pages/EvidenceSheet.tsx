@@ -276,17 +276,24 @@ export default function EvidenceSheet() {
               </p>
             ) : (
               attachments.map(file => (
-                <a
-                  key={file.id}
-                  href={file.url}
-                  className="no-print focus-ring surface-card flex items-center gap-3 p-3 text-sm text-primary"
-                >
-                  <Download size={15} aria-hidden="true" />
-                  <span className="flex-1">{file.fileName}</span>
-                  <span className="meta-label text-muted-foreground">
-                    {displayFileKind(file.kind)}
-                  </span>
-                </a>
+                <div key={file.id}>
+                  <a
+                    href={file.url}
+                    className="no-print focus-ring surface-card flex items-center gap-3 p-3 text-sm text-primary"
+                  >
+                    <Download size={15} aria-hidden="true" />
+                    <span className="flex-1">{file.fileName}</span>
+                    <span className="meta-label text-muted-foreground">
+                      {displayFileKind(file.kind)}
+                    </span>
+                  </a>
+                  <div className="print-only hidden items-center gap-3 border-b border-border py-2 text-sm text-ink">
+                    <span className="flex-1">{file.fileName}</span>
+                    <span className="meta-label text-muted-foreground">
+                      {displayFileKind(file.kind)}
+                    </span>
+                  </div>
+                </div>
               ))
             )}
           </div>

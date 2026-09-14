@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Route, Switch } from "wouter";
+import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import PsecLayout from "./components/PsecLayout";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -24,6 +24,69 @@ const Legal = lazy(() => import("./pages/Legal"));
 function PageLoader() {
   const { t } = useLanguage();
   return <div className="flex min-h-[45vh] items-center justify-center bg-background" role="status" aria-live="polite"><span className="font-mono text-[10px] uppercase tracking-[.18em] text-muted-foreground">{t("loading")}</span></div>;
+}
+
+function RouteEffects() {
+  const [location] = useLocation();
+  const { language, t } = useLanguage();
+
+  useEffect(() => {
+    const titleForPath = location === "/"
+      ? t("overview")
+      : location.startsWith("/library")
+        ? t("archive")
+        : location === "/submit"
+          ? t("submissionGuidelines")
+          : location === "/submit-evidence"
+            ? t("addEvidence")
+            : location === "/my-records"
+              ? t("myRecords")
+              : location === "/login"
+                ? t("memberAccess")
+                : location === "/privacy"
+                  ? t("privacyPolicy")
+                  : location === "/terms"
+                    ? t("termsOfUse")
+                    : location === "/research-ethics"
+                      ? t("researchEthics")
+                      : location === "/content-policy"
+                        ? t("contentPolicy")
+                        : location.includes("/evidence")
+                          ? t("evidencePack")
+                          : location.startsWith("/records/")
+                            ? t("recordLabel")
+                            : location === "/psec-admin-review-queue"
+                              ? t("adminReviewQueue")
+                              : "404";
+    document.title = `${titleForPath} · ${t("brandTitle")}`;
+    document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
+  }, [language, location, t]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.history.scrollRestoration = "manual";
+    let attempts = 0;
+    let frame = 0;
+    const restorePosition = () => {
+      if (window.location.hash === "#archive-search") {
+        const target = document.getElementById("archive-search");
+        if (target) {
+          target.scrollIntoView({ behavior: "auto", block: "start" });
+          return;
+        }
+        if (attempts < 20) {
+          attempts += 1;
+          frame = window.requestAnimationFrame(restorePosition);
+        }
+        return;
+      }
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    };
+    frame = window.requestAnimationFrame(restorePosition);
+    return () => window.cancelAnimationFrame(frame);
+  }, [location]);
+
+  return null;
 }
 
 function PublicRouter() {
@@ -79,6 +142,7 @@ function App() {
       <ThemeProvider defaultTheme="light">
         <LanguageProvider>
           <TooltipProvider>
+            <RouteEffects />
             <ResumeMemberFlow />
             <Toaster />
             <Router />
