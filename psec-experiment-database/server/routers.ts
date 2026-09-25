@@ -138,19 +138,15 @@ const evidenceAttempts = new Map<
 >();
 
 function evidenceRequestKey(req: {
-  headers: Record<string, string | string[] | undefined>;
   ip?: string;
+  socket?: { remoteAddress?: string | undefined };
 }) {
-  const forwarded = req.headers["x-forwarded-for"];
-  const firstForwarded = Array.isArray(forwarded)
-    ? forwarded[0]
-    : forwarded?.split(",")[0];
-  return firstForwarded?.trim() || req.ip || "unknown";
+  return req.ip || req.socket?.remoteAddress || "unknown";
 }
 
 function assertEvidenceRateLimit(req: {
-  headers: Record<string, string | string[] | undefined>;
   ip?: string;
+  socket?: { remoteAddress?: string | undefined };
 }) {
   const key = evidenceRequestKey(req);
   const now = Date.now();

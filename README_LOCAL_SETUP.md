@@ -8,20 +8,20 @@ This package contains the **current source tree**, a **database export**, Drizzl
 |---|---|
 | `psec-experiment-database/` | Application source, database schema, migrations, tests, and documentation. |
 | `database-backup/psec-database-schema.sql` | MySQL table definitions captured at export time. |
-| `database-backup/psec-database-data.json` | Current database data in portable JSON form. **Excluded from version control** — see below. |
+| `database-backup/psec-database-data.json` | Local database data in portable JSON form. **Excluded from version control** — see below. |
 | `psec-experiment-database/LOCAL_ENVIRONMENT_TEMPLATE.txt` | Safe local environment-variable template. It contains **no live passwords or API keys**. |
 
 ## What is intentionally excluded
 
-The archive excludes `node_modules`, generated `dist` output, Git internals, Manus preview/debug files, deployment configuration, and all populated environment files. No administrator passwords, database credentials, API keys, OAuth secrets, or session secrets are included.
+The public repository excludes `node_modules`, generated `dist` output, Git internals, Manus preview/debug files, deployment configuration, and all populated environment files. No administrator passwords, database credentials, API keys, OAuth secrets, or session secrets should be included.
 
 Administrator passwords are read from the `PSEC_ADMIN_PASSWORDS` environment variable only. No credential value appears anywhere in the source tree; `server/admin.secret.test.ts` asserts against the values supplied by that variable at test time rather than against inlined literals.
 
 ## About `psec-database-data.json`
 
-This file is listed in `.gitignore` and is therefore **not** part of a fresh clone: it contains row
-data, including a real account record with an email address and OAuth `openId`. Keep it on your local
-machine or in private storage.
+This file is listed in `.gitignore` and is therefore **not** part of a fresh clone. It may contain
+personal data, account identifiers, email addresses, or other private row data. Keep it on your local
+machine or in private storage, and never upload it to a public repository.
 
 To reconstruct a working database without it, apply the schema, then the Drizzle migrations, then the
 seed data:

@@ -20,7 +20,7 @@
 }
 ```
 
-3. 只在服务器 `/home/psec/psec-web/psec-experiment-database/.env` 增加以下四项，其他已有变量保留。不要在聊天、截图、终端输出或 GitHub 中展示 AccessKey。设置文件权限为仅 `psec` 可读（`chmod 600 .env`）。
+3. 只在服务器应用目录的 `.env` 增加以下四项，其他已有变量保留。不要在聊天、截图、终端输出或 GitHub 中展示 AccessKey。设置文件权限为仅运行账户可读（`chmod 600 .env`）。
 
 ```dotenv
 OSS_REGION=oss-ap-southeast-5
@@ -37,10 +37,10 @@ OSS_ACCESS_KEY_SECRET=RAM的AccessKeySecret
 
 ```ini
 [Service]
-User=psec
-WorkingDirectory=/home/psec/psec-web/psec-experiment-database
-EnvironmentFile=/home/psec/psec-web/psec-experiment-database/.env
-ExecStart=/usr/bin/node /home/psec/psec-web/psec-experiment-database/dist/index.js
+User=your-service-user
+WorkingDirectory=/path/to/psec-experiment-database
+EnvironmentFile=/path/to/psec-experiment-database/.env
+ExecStart=/usr/bin/node /path/to/psec-experiment-database/dist/index.js
 ```
 
 如果服务使用其他 Node.js 安装路径，只调整 `ExecStart` 的可执行文件路径；仍需保留 `WorkingDirectory` 和 `EnvironmentFile`。修改 unit 后执行 `sudo systemctl daemon-reload`，再重启服务。应用也会从构建产物所在项目目录寻找 `.env` 作为兜底，但生产环境应优先使用 systemd 的 `EnvironmentFile`，这样启动目录变化不会影响配置。
@@ -56,8 +56,8 @@ ExecStart=/usr/bin/node /home/psec/psec-web/psec-experiment-database/dist/index.
 确认密钥和旧附件准备就绪后，在服务器上对 MySQL 做私有备份，再执行：
 
 ```bash
-ssh psec-server
-cd ~/psec-web/psec-experiment-database
+ssh your-server-alias
+cd /path/to/psec-experiment-database
 git status --short --branch
 git pull --ff-only origin main
 pnpm install --frozen-lockfile
@@ -83,6 +83,6 @@ verifies the core tables, repairs the record-based evidence columns, creates the
 school-email code table if it is absent, and records the already-present
 migrations through `0012`. It does not print or change any credentials.
 
-如果服务器的当前分支不是 `main`，先停止，不要在生产目录强行切换分支或覆盖未提交改动。`ui-redesign` 只用于预览和 GitHub 协作，不能直接部署到生产目录。迁移命令使用现有 `.env` 的数据库地址，执行前要确认备份已完成。
+如果服务器的当前分支不是预定的生产分支，先停止，不要在生产目录强行切换分支或覆盖未提交改动。迁移命令使用现有 `.env` 的数据库地址，执行前要确认备份已完成。
 
 打开 `https://psec.club/`，使用普通账号上传附件并下载，再验证未登录/无权用户不能访问私有附件；管理员也要检查投稿附件。若服务启动失败，查看 `sudo journalctl -u psec-web -n 80 --no-pager`，不要把含密钥的日志直接贴到公开渠道。**GitHub 推送和生产部署是两件不同的事。**

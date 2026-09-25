@@ -1,8 +1,8 @@
 # Local deployment configuration — create a private environment configuration file manually from these values.
 DATABASE_URL=mysql://USERNAME:PASSWORD@HOST:3306/psec_database
 JWT_SECRET=replace-with-a-long-random-secret
-SCHOOL_EMAIL_DOMAIN=shphschool.com
-OWNER_EMAIL=admin@shphschool.com
+SCHOOL_EMAIL_DOMAIN=your-school.example
+OWNER_EMAIL=admin@your-school.example
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_USER=noreply@example.com

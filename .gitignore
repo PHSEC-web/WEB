@@ -10,9 +10,8 @@
 # ------------------------------------------------------------
 # Database export — MUST NOT be committed
 # ------------------------------------------------------------
-# Contains a real account row (openId + email address). The table
-# definitions in psec-database-schema.sql are safe to publish; the
-# row data is not.
+# Local row data may contain personal information or account identifiers.
+# The schema-only export is safe to publish; row data is not.
 database-backup/psec-database-data.json
 
 # ------------------------------------------------------------
@@ -22,6 +21,14 @@ database-backup/psec-database-data.json
 .env.*
 !.env.example
 LOCAL_ENVIRONMENT.txt
+
+# Credentials and private keys
+*.pem
+*.key
+*.p12
+*.pfx
+*credentials*.json
+*service-account*.json
 
 # ------------------------------------------------------------
 # Dependencies
@@ -93,6 +100,10 @@ Thumbs.db
 *.bak
 *.orig
 *.rej
+*.dump
+*.sql.gz
+*.tar.gz
+*.zip
 tmp/
 temp/
 

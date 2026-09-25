@@ -7,9 +7,12 @@ const { put, signatureUrlV4 } = vi.hoisted(() => ({
   signatureUrlV4: vi.fn(),
 }));
 
-vi.mock("ali-oss", () => ({
-  default: vi.fn().mockImplementation(() => ({ put, signatureUrlV4 })),
-}));
+vi.mock("ali-oss", () => {
+  const OSSClient = vi.fn(function () {
+    return { put, signatureUrlV4 };
+  });
+  return { default: OSSClient };
+});
 
 vi.mock("./_core/env", () => ({
   ENV: {

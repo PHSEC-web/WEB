@@ -41,9 +41,7 @@ export function isAdminPasswordCorrect(password: string) {
 }
 
 function requestKey(req: Request) {
-  const forwarded = req.headers["x-forwarded-for"];
-  const firstForwarded = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(",")[0];
-  return firstForwarded?.trim() || req.ip || "unknown";
+  return req.ip || req.socket.remoteAddress || "unknown";
 }
 
 export function assertAdminLoginAllowed(req: Request) {

@@ -93,8 +93,8 @@ pnpm db:push   # 生成并应用 Drizzle 迁移
 ## 分支约定
 
 - `main`：已合并、可作为正式版本基线的代码。
-- `ui-redesign`：稳定 UI 和体验改进分支，生产环境当前跟踪的版本线。
-- `phase-c`：下一阶段功能和界面开发分支。开发期间不直接部署到生产环境。
+- `ui-redesign`：UI 和体验改进分支，合并前用于预览和协作。
+- `phase-c`：下一阶段功能和界面开发分支，合并前不直接部署到生产环境。
 
 合并前应通过 TypeScript 检查、自动化测试和生产构建。不要为了修改 GitHub Contributors 统计而重写提交历史；提交使用的邮箱应已绑定并验证到对应的 GitHub 账号。
 
@@ -109,4 +109,4 @@ pnpm db:push   # 生成并应用 Drizzle 迁移
 
 ## License
 
-应用包的 `package.json` 标注为 MIT。仓库根目录目前没有单独的 `LICENSE` 文件；如需公开发布或正式分发，建议补充完整的许可证文件并确认项目内容的版权归属。项目内字体和 PDF 生成依赖的许可信息见 [`THIRD_PARTY_NOTICES.md`](psec-experiment-database/THIRD_PARTY_NOTICES.md)。
+仓库目前没有根目录 `LICENSE` 文件，因此公开可见不等于自动授予他人复制、修改或再发布权限。正式选择许可证前，请确认源代码、设计、文字、字体和学校材料的版权归属。项目依赖的许可信息见 [`THIRD_PARTY_NOTICES.md`](psec-experiment-database/THIRD_PARTY_NOTICES.md)。
