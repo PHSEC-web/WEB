@@ -109,4 +109,6 @@ pnpm db:push   # 生成并应用 Drizzle 迁移
 
 ## License
 
-仓库目前没有根目录 `LICENSE` 文件，因此公开可见不等于自动授予他人复制、修改或再发布权限。正式选择许可证前，请确认源代码、设计、文字、字体和学校材料的版权归属。项目依赖的许可信息见 [`THIRD_PARTY_NOTICES.md`](psec-experiment-database/THIRD_PARTY_NOTICES.md)。
+PSEC 程序源代码按 Apache License 2.0 许可，版权声明为 `Copyright 2026 PSEC Project Contributors`，详见根目录 [`LICENSE`](LICENSE)。
+
+该许可证只适用于本项目的程序源代码及其随附的代码文档，不自动覆盖学生投稿、研究数据、上传附件、学校材料、校徽、Logo、第三方字体或其他第三方内容。第三方依赖的许可信息见 [`THIRD_PARTY_NOTICES.md`](psec-experiment-database/THIRD_PARTY_NOTICES.md)。
